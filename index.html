@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.11 (All-in-one)</title>
+<title>연구실 배정 v1.12 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -35,9 +35,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
 /* 배경 그룹은 보이되 드롭 금지 */
 [id^="bg"], [id^="BG"]{ pointer-events:none; }
-
-/* 방 위 강조 */
-.room-hover{ outline:2px solid var(--primary); outline-offset:2px; }
 
 /* 오른쪽 목록/칩 */
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
@@ -80,11 +77,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
     <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
       <span class="hint">bg 제외 **모든 id 요소**가 드롭존</span>
-      <span class="version">v1.11</span>
+      <span class="version">v1.12</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.11 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.12 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -132,7 +129,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.11 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.12 | ' + m;
 
   const state = { people:[], assigned:new Map(), roomState:new Map(), svgEl:null, search:"" };
 
@@ -183,15 +180,12 @@ body.dragging{ user-select:none; cursor:grabbing; }
     return { x:r.left-h.left+svgHost.scrollLeft, y:r.top-h.top+svgHost.scrollTop, w:r.width, h:r.height };
   }
 
-  /* ===== SVG 표시/투명화(선택적) ===== */
   function normalizeSvgAppearance(svg){
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
-    // 텍스트는 보이게
     svg.querySelectorAll('text').forEach(t=>{ if (!t.getAttribute('fill')) t.setAttribute('fill','#111827'); });
   }
 
-  /* ===== 칩 렌더 ===== */
   function layoutChips(roomId){
     const st=ensureRoom(roomId), node=state.svgEl?.querySelector('#'+CSS.escape(roomId)); if(!node) return;
     svgHost.querySelectorAll(`.occChip[data-room="${CSS.escape(roomId)}"]`).forEach(el=>el.remove());
@@ -254,13 +248,12 @@ body.dragging{ user-select:none; cursor:grabbing; }
     setStatus(`배정 취소: ${pid}`);
   });
 
-  /* ===== 좌표 기반 타깃팅: svgHost 위에 떨어져도 실제 SVG 요소를 역추적 ===== */
+  /* ===== 좌표 기반 타깃팅 ===== */
   function targetRoomFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
     if (!el) return null;
-    // SVG 내부 요소 또는 그 조상 중 id 가진 것
+    // 칩이 위에 있으면 잠깐 숨기고 다시 확인
     let node = el.closest ? el.closest('[id]') : null;
-    // 만약 chips 등 absolute 요소가 위에 있으면, 잠깐 숨기고 다시 탐색
     if ((!node || node === document.body) && el.classList && el.classList.contains('occChip')){
       el.style.display='none';
       const under = document.elementFromPoint(clientX, clientY);
@@ -273,11 +266,12 @@ body.dragging{ user-select:none; cursor:grabbing; }
     return node;
   }
 
-  // SVG 내부(이벤트 위임) + svgHost(좌표 기반) 모두 처리
+  // ✅ 드롭 재진입 가드(중복 drop 방지)
+  let dropGuard = false;
+
   function attachRoomHandlers(){
     const svg=state.svgEl; if(!svg) return;
 
-    // hover 강조
     svg.addEventListener('mousemove', (e)=>{
       const node = targetRoomFromPoint(e.clientX, e.clientY) || e.target.closest('[id]');
       svg.querySelectorAll('.room-hover').forEach(n=>n.classList.remove('room-hover'));
@@ -292,12 +286,17 @@ body.dragging{ user-select:none; cursor:grabbing; }
       if (id.startsWith('bg')) return;
       e.preventDefault();
     };
+
     const onDrop = (e)=>{
+      if (dropGuard) { e.preventDefault(); e.stopPropagation(); return; }
+      dropGuard = true;
+      setTimeout(()=> dropGuard = false, 0);
+
       const node = targetRoomFromPoint(e.clientX, e.clientY) || e.target.closest?.('[id]');
-      if (!node) return;
+      if (!node) { e.preventDefault(); e.stopPropagation(); return; }
       const roomId=node.id;
-      if ((roomId||'').toLowerCase().startsWith('bg')) return;
-      e.preventDefault();
+      if ((roomId||'').toLowerCase().startsWith('bg')) { e.preventDefault(); e.stopPropagation(); return; }
+      e.preventDefault(); e.stopPropagation();
 
       const json=e.dataTransfer.getData('application/json');
       const pid =e.dataTransfer.getData('text/pid');
@@ -307,15 +306,23 @@ body.dragging{ user-select:none; cursor:grabbing; }
       const p=JSON.parse(json);
       const st=ensureRoom(roomId);
 
-      if (st.gender && st.gender!==p.성별){ alert(`성별 제한: ${st.gender} 방입니다.`); return; }
-      if (st.capacity && st.occupants.length>=st.capacity){ alert(`정원 초과 (정원: ${st.capacity})`); return; }
+      // 같은 방으로 드롭하면 무시
+      if (state.assigned.get(pid) === roomId) { setStatus(`${p.성명}: 이미 ${roomId}에 배정됨`); return; }
 
+      // 먼저 이전 방에서 제거(재배치 고려)
       if (state.assigned.has(pid)){
         const old=state.assigned.get(pid);
         const os=ensureRoom(old);
         os.occupants=os.occupants.filter(x=>x!==pid);
         renderRoom(old);
       }
+
+      // 이제 현재 방 정원 체크 (진짜 초과일 때만)
+      if (st.capacity && st.occupants.length >= st.capacity){
+        alert(`정원 초과 (정원: ${st.capacity})`);
+        return;
+      }
+
       st.occupants.push(pid);
       state.assigned.set(pid, roomId);
       renderRoom(roomId);
@@ -323,14 +330,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
       setStatus(`배정: ${p.성명} → ${roomId}`);
     };
 
-    // SVG 자체
     svg.addEventListener('dragover', onDragOver);
     svg.addEventListener('drop', onDrop);
-    // SVG를 싸고 있는 div도 같은 핸들러(브라우저 편차 대비)
     svgHost.addEventListener('dragover', onDragOver);
     svgHost.addEventListener('drop', onDrop);
 
-    // 클릭 → 방 설정
     svg.addEventListener('click', (e)=>{
       const node = targetRoomFromPoint(e.clientX, e.clientY) || e.target.closest('[id]');
       if (!node) return;
@@ -340,10 +344,6 @@ body.dragging{ user-select:none; cursor:grabbing; }
       document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
       panel.classList.add('show');
     });
-
-    // 드롭존 수 집계(참고)
-    const zones = [...svg.querySelectorAll('[id]')].filter(n=>!(n.id||'').toLowerCase().startsWith('bg')).length;
-    setStatus(`SVG 로드 완료: 드롭 가능 id ${zones}개`);
   }
 
   // SVG 로드
