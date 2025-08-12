@@ -2,12 +2,12 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"/>
-  <title>연구실 배정 v1.01</title>
+  <title>연구실 배정 v1.02</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="stylesheet" href="styles.css"/>
   <!-- SheetJS (엑셀 파서) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- app.js를 DOM 후 실행 -->
+  <!-- 앱 스크립트는 DOM 이후 실행 -->
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -24,15 +24,15 @@
       <button id="resetBtn" class="btn">초기화</button>
     </div>
 
-    <div class="group">
+    <div class="group right">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
       <span class="hint">배경(id가 <b>bg</b> 시작)은 드롭 불가</span>
-      <span class="version" id="versionBadge">v1.01</span>
+      <span class="version" id="versionBadge">v1.02</span>
     </div>
   </header>
 
   <div class="statusbar">
-    <span id="status">대기 중… SVG/엑셀을 업로드하세요</span>
+    <span id="status">v1.02 | 대기 중… SVG/엑셀을 업로드하세요</span>
   </div>
 
   <main class="layout">
