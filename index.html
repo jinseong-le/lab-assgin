@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.04 (All-in-one)</title>
+<title>연구실 배정 v1.05 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -13,7 +13,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; }
 .group{ display:flex; gap:8px; align-items:center; }
 .btn{ border:1px solid var(--line); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
-.btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
 .hint{ font-size:12px; color:var(--muted); }
 .version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
 
@@ -22,7 +21,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .layout{ display:grid; grid-template-columns: 1fr 380px; gap:16px; }
 .canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
 
-/* 체커보드 배경: 흰 객체도 보이도록 */
+/* 체커보드: 흰 선/면도 보이게 */
 .svgHost{
   position:relative; min-height:500px; overflow:auto;
   background:
@@ -34,6 +33,9 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 }
 .svgHost svg{ width:100%; height:auto; display:block; }
 .placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
+
+/* bg는 보이되 드롭은 금지 */
+[id^="bg"], [id^="BG"] { pointer-events:none; }
 
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
 #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
@@ -52,11 +54,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .occChip{ position:absolute; font-size:12px; padding:2px 6px; border-radius:8px; background:#fafafa; border:1px solid #ccc; pointer-events:auto; cursor:grab; white-space:nowrap; }
 .occChip.male{ border-color:#7aa; background:#eef6ff; }
 .occChip.female{ border-color:#a77; background:#ffeef0; }
-
-/* 복구 토글 on일 때 svg 전체에 임시 윤곽선 */
-.force-outline [id]:not([id^="bg"]) {
-  /* 여기는 JS에서 style 속성 주입으로 처리하므로 CSS는 보조용 */
-}
 </style>
 </head>
 <body>
@@ -76,12 +73,12 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
     <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
-      <span class="hint">배경(id가 <b>bg</b> 시작)은 드롭 불가</span>
-      <span class="version" id="versionBadge">v1.04</span>
+      <span class="hint">배경(id가 <b>bg</b> 시작)은 보이지만 드롭 불가</span>
+      <span class="version" id="versionBadge">v1.05</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.04 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.05 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -100,17 +97,11 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
 <script>
 (() => {
-  // ========= 상태 =========
   const state = {
-    people: [],            // 전체 인물
-    assigned: new Map(),   // pid -> roomId
-    roomState: new Map(),  // roomId -> {capacity, gender, type, occupants:[pid]}
-    svgEl: null,
-    search: "",
-    fixed: false,          // 복구모드 여부
+    people: [], assigned: new Map(), roomState: new Map(),
+    svgEl: null, search: ""
   };
 
-  // ========= 우선순위 =========
   const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
   const toInt = s => { const n = parseInt(String(s||"").split(".")[0],10); return isNaN(n) ? -999999 : n; };
   const sortPeople = (a,b) => {
@@ -123,7 +114,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     return String(a.생년월일||"").localeCompare(String(b.생년월일||""));
   };
 
-  // ========= DOM =========
   const svgHost   = document.getElementById('svgHost');
   const peopleBox = document.getElementById('people');
   const svgInput  = document.getElementById('svgInput');
@@ -132,33 +122,31 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const fixBtn    = document.getElementById('fixBtn');
   const searchInp = document.getElementById('search');
   const statusEl  = document.getElementById('status');
-  const setStatus = (msg)=>{ if(statusEl) statusEl.textContent = `v1.04 | ${msg}`; console.log('[STATUS]', msg); };
+  const setStatus = (m)=>{ statusEl.textContent = `v1.05 | ${m}`; console.log('[STATUS]', m); };
 
-  // ========= 유틸 =========
   const ensureRoom = (roomId)=>{
-    if(!state.roomState.has(roomId)){
-      state.roomState.set(roomId, {capacity:1, gender:"", type:"", occupants:[]});
-    }
+    if(!state.roomState.has(roomId)) state.roomState.set(roomId, {capacity:1, gender:"", type:"", occupants:[]});
     return state.roomState.get(roomId);
   };
   const getPerson = (pid)=> state.people.find(x=>x.사번===pid);
   const nodeBBoxInHost = (node)=>{
-    const r = node.getBoundingClientRect();
-    const hostR = svgHost.getBoundingClientRect();
+    const r = node.getBoundingClientRect(), hostR = svgHost.getBoundingClientRect();
     return { x: r.left - hostR.left + svgHost.scrollLeft, y: r.top - hostR.top + svgHost.scrollTop, w: r.width, h: r.height };
   };
 
-  // ========= SVG 가시화 복구 =========
+  // 배경 포함 “가시화 복구”: bg도 포함해 stroke/fill/opacity/display 정리
   function normalizeSvgAppearance(svg){
-    // 1) viewBox 보정
+    const SHAPES = ['rect','path','polygon','polyline','circle','ellipse','line'];
+    // viewBox & size
+    if (!svg.getAttribute('viewBox')) {
+      const w = parseFloat(svg.getAttribute('width')) || 1000;
+      const h = parseFloat(svg.getAttribute('height')) || 800;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    }
+    svg.removeAttribute('width'); svg.removeAttribute('height');
+
+    // 전체 bbox로 재설정
     try {
-      if (!svg.getAttribute('viewBox')) {
-        const w = parseFloat(svg.getAttribute('width')) || 1000;
-        const h = parseFloat(svg.getAttribute('height')) || 800;
-        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-      }
-      svg.removeAttribute('width'); svg.removeAttribute('height');
-      // 전체 bbox 기준 재설정
       const nodes = svg.querySelectorAll('*');
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       nodes.forEach(n=>{
@@ -175,4 +163,227 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
         }
       });
       if (minX < Infinity) {
-        const v
+        const vw = Math.max(1, maxX - minX), vh = Math.max(1, maxY - minY);
+        svg.setAttribute('viewBox', `${minX} ${minY} ${vw} ${vh}`);
+      }
+    } catch(e){}
+
+    // 가시화: bg 포함 전체 적용
+    svg.querySelectorAll('*').forEach(el=>{
+      const t = el.tagName.toLowerCase();
+      // 숨김 속성 풀기
+      if (el.getAttribute('display') === 'none') el.removeAttribute('display');
+      if (el.getAttribute('visibility') === 'hidden') el.removeAttribute('visibility');
+      if (parseFloat(el.getAttribute('opacity')) === 0) el.removeAttribute('opacity');
+      const st = el.getAttribute('style')||'';
+      if (/display\s*:\s*none/i.test(st)) el.setAttribute('style', st.replace(/display\s*:\s*none;?/ig,''));
+      if (/visibility\s*:\s*hidden/i.test(el.getAttribute('style')||'')) el.setAttribute('style', (el.getAttribute('style')||'').replace(/visibility\s*:\s*hidden;?/ig,''));
+      if (/opacity\s*:\s*0(\.0+)?/i.test(el.getAttribute('style')||'')) el.setAttribute('style', (el.getAttribute('style')||'').replace(/opacity\s*:\s*0(\.0+)?;?/ig,''));
+
+      // 클리핑/마스크 제거(보이게)
+      if (el.hasAttribute('clip-path')) el.removeAttribute('clip-path');
+      if (el.hasAttribute('mask')) el.removeAttribute('mask');
+
+      // 선/면 기본값 강제
+      if (SHAPES.includes(t)) {
+        if (!el.getAttribute('stroke')) el.setAttribute('stroke','#6b7280');
+        if (!el.getAttribute('stroke-width')) el.setAttribute('stroke-width','1');
+        if (!el.getAttribute('fill')) el.setAttribute('fill','none');
+      }
+      if (t==='text' && !el.getAttribute('fill')) el.setAttribute('fill','#111827');
+
+      // <image> 경고
+      if (t==='image'){
+        const href = el.getAttribute('href') || el.getAttribute('xlink:href');
+        console.warn('SVG <image> 참조가 있습니다. 배경 이미지가 외부파일이면 같은 폴더에 올려주세요:', href);
+      }
+    });
+  }
+
+  function layoutChips(roomId){
+    const st = ensureRoom(roomId);
+    const node = state.svgEl?.querySelector('#'+CSS.escape(roomId));
+    if(!node) return;
+    svgHost.querySelectorAll(`.occChip[data-room="${CSS.escape(roomId)}"]`).forEach(el=>el.remove());
+    const box = nodeBBoxInHost(node), pad = 4, cols = Math.max(1, Math.floor(box.w / 90));
+    st.occupants.forEach((pid, idx)=>{
+      const p = getPerson(pid); if(!p) return;
+      const chip = document.createElement('div');
+      chip.className = 'occChip ' + (p.성별==="남자"?"male":"female");
+      chip.dataset.room = roomId; chip.dataset.pid = pid; chip.draggable = true;
+      chip.textContent = `${p.부서} ${p.성명}${p.성별==="남자"?" (남)":" (여)"}`;
+      const col = idx % cols, row = Math.floor(idx / cols);
+      chip.style.left = `${box.x + pad + col * Math.max(90, (box.w - pad*2)/cols)}px`;
+      chip.style.top  = `${box.y + pad + row * 22}px`;
+      chip.addEventListener('dragstart', e=>{
+        e.dataTransfer.setData('application/json', JSON.stringify(p));
+        e.dataTransfer.setData('text/pid', pid);
+        e.dataTransfer.setData('text/from', 'room');
+        e.dataTransfer.setData('text/roomId', roomId);
+      });
+      svgHost.appendChild(chip);
+    });
+    node.style.filter = st.occupants.length>0 ? "drop-shadow(0 0 4px rgba(64,158,255,.6))" : "";
+  }
+  const renderRoom = (roomId)=> layoutChips(roomId);
+
+  function renderPeople(){
+    const kw = (state.search||"").trim();
+    const re = kw ? new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')) : null;
+    const list = state.people.filter(p=>!state.assigned.has(p.사번)).filter(p=>!re || re.test(p.성명)).sort(sortPeople);
+    peopleBox.innerHTML = "";
+    list.forEach(p=>{
+      const card = document.createElement('div');
+      card.className = 'card ' + (p.성별==="남자"?"male":"female");
+      card.draggable = true; card.dataset.pid = p.사번;
+      card.innerHTML = `<div><b>${p.성명}</b> <span class="badge">${p.직위}</span></div>
+                        <div class="meta">${p.부서} · ${p.성별} · 승급:${p.승급일} · 생:${p.생년월일} · 호봉:${p.호봉}</div>`;
+      card.addEventListener('dragstart', e=>{
+        e.dataTransfer.setData('application/json', JSON.stringify(p));
+        e.dataTransfer.setData('text/pid', p.사번);
+        e.dataTransfer.setData('text/from', 'list');
+      });
+      peopleBox.appendChild(card);
+    });
+  }
+
+  function attachPeopleDropzone(){
+    peopleBox.addEventListener('dragover', ev=>{ ev.preventDefault(); peopleBox.classList.add('drop-hover'); });
+    peopleBox.addEventListener('dragleave', ()=> peopleBox.classList.remove('drop-hover'));
+    peopleBox.addEventListener('drop', ev=>{
+      ev.preventDefault(); peopleBox.classList.remove('drop-hover');
+      const pid  = ev.dataTransfer.getData('text/pid');
+      const from = ev.dataTransfer.getData('text/from');
+      const prev = ev.dataTransfer.getData('text/roomId') || null;
+      if (!pid) return;
+      if (from === 'room' && prev){
+        const st = ensureRoom(prev);
+        st.occupants = st.occupants.filter(x=>x!==pid);
+        state.assigned.delete(pid);
+        renderRoom(prev);
+        renderPeople();
+        setStatus(`배정 취소: ${pid}`);
+      }
+    });
+  }
+
+  async function loadSvgFromFile(file){
+    setStatus('SVG 파싱 중…');
+    const text = await file.text();
+    const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+    let svg = doc.documentElement;
+    if (svg.tagName.toLowerCase() !== 'svg') svg = doc.querySelector('svg');
+    if (!svg) throw new Error("유효한 SVG 아님");
+    svg.removeAttribute('width'); svg.removeAttribute('height');
+    if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
+    svgHost.innerHTML = ""; svgHost.appendChild(svg);
+    state.svgEl = svg;
+
+    // bg도 보이게 복구(단, 드롭은 금지: CSS pointer-events로 처리)
+    normalizeSvgAppearance(svg);
+
+    attachRoomHandlers();
+    attachPeopleDropzone();
+    setStatus('SVG 로드 완료: 배경/도형 가시화 및 드롭존 준비');
+  }
+
+  function attachRoomHandlers(){
+    const svg = state.svgEl; if(!svg) return;
+    const all = svg.querySelectorAll('[id]');
+    let count=0;
+    all.forEach(node=>{
+      const id = node.id || ""; const tag = node.tagName.toLowerCase();
+      const isShape = ['rect','path','polygon','polyline','circle','ellipse','line'].includes(tag);
+      if (!isShape) return;
+      if (id.toLowerCase().startsWith('bg')) return; // bg는 드롭 금지(보이긴 함)
+      count++;
+      node.style.cursor = 'pointer';
+      node.addEventListener('mouseenter', ()=> node.classList.add('room-hover'));
+      node.addEventListener('mouseleave', ()=> node.classList.remove('room-hover'));
+      node.addEventListener('dragover', ev=> ev.preventDefault());
+      node.addEventListener('drop', ev=>{
+        ev.preventDefault();
+        const json = ev.dataTransfer.getData('application/json');
+        const pid  = ev.dataTransfer.getData('text/pid');
+        const prev = ev.dataTransfer.getData('text/roomId') || null;
+        if(!json || !pid) return;
+        const p = JSON.parse(json);
+        const st = ensureRoom(id);
+        if (state.assigned.has(pid)) {
+          const old = state.assigned.get(pid);
+          const os = ensureRoom(old);
+          os.occupants = os.occupants.filter(x=>x!==pid);
+          renderRoom(old);
+        }
+        st.occupants.push(pid);
+        state.assigned.set(pid, id);
+        renderRoom(id);
+        renderPeople();
+        setStatus(`배정: ${p.성명} → ${id}`);
+      });
+    });
+    setStatus(`SVG 로드 완료: 드롭존 ${count}개`);
+  }
+
+  async function loadExcelFromFile(file){
+    setStatus('엑셀 파싱 중…');
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const name = wb.SheetNames.includes("기준변경 반영") ? "기준변경 반영" : wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval:"" });
+    const people = rows.map(r=>({
+      사번:String(r["사번"]||""), 성명:r["성명"]||"", 부서:r["부서"]||"",
+      직계:r["직계(직종)"]||"", 직위:r["직위"]||"", 성별:r["성별"]||"",
+      승급일:r["승급일"]||"", 생년월일:r["생년월일"]||"", 호봉:r["호봉"]||""
+    }))
+    .filter(p=>!String(p.직계).startsWith("진료"))
+    .filter(p=>Object.keys(TITLE_ORDER).includes(p.직위));
+    state.people = people;
+    state.assigned.clear();
+    state.roomState.forEach(st=>st.occupants=[]);
+    document.querySelectorAll('.occChip').forEach(el=>el.remove());
+    renderPeople();
+    setStatus(`엑셀 로드 완료: ${people.length}명`);
+  }
+
+  // 이벤트
+  svgInput.addEventListener('change', async e=>{
+    const f = e.target.files?.[0]; if(!f) return;
+    try { await loadSvgFromFile(f); } catch(err){ console.error(err); setStatus('SVG 로드 실패'); alert('SVG 로드 실패: 파일 확인'); }
+  });
+  xlInput.addEventListener('change', async e=>{
+    const f = e.target.files?.[0]; if(!f) return;
+    try { await loadExcelFromFile(f); } catch(err){ console.error(err); setStatus('엑셀 로드 실패'); alert('엑셀 로드 실패: 파일 확인'); }
+  });
+  resetBtn.addEventListener('click', ()=>{
+    state.people=[]; state.assigned.clear(); state.roomState.clear();
+    peopleBox.innerHTML = "";
+    svgHost.innerHTML = '<div class="placeholder">왼쪽의 <b>SVG</b>와 <b>엑셀</b>을 업로드하세요</div>';
+    setStatus('초기화 완료');
+  });
+  document.getElementById('versionBadge').textContent = 'v1.05';
+  searchInp.addEventListener('input', ()=>{ state.search = searchInp.value||""; renderPeople(); });
+
+  // 우측 목록: 배정 취소 드롭존
+  peopleBox.addEventListener('dragover', ev=>{ ev.preventDefault(); peopleBox.classList.add('drop-hover'); });
+  peopleBox.addEventListener('dragleave', ()=> peopleBox.classList.remove('drop-hover'));
+  peopleBox.addEventListener('drop', ev=>{
+    ev.preventDefault(); peopleBox.classList.remove('drop-hover');
+    const pid  = ev.dataTransfer.getData('text/pid');
+    const prev = ev.dataTransfer.getData('text/roomId')||null;
+    if (!pid || !prev) return;
+    const st = ensureRoom(prev);
+    st.occupants = st.occupants.filter(x=>x!==pid);
+    state.assigned.delete(pid);
+    renderRoom(prev);
+    renderPeople();
+    setStatus(`배정 취소: ${pid}`);
+  });
+
+  // 초기
+  setStatus('대기 중… SVG/엑셀을 업로드하세요');
+  renderPeople();
+})();
+</script>
+</body>
+</html>
