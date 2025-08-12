@@ -2,8 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.08 (All-in-one)</title>
+<title>연구실 배정 v1.09 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<!-- 엑셀 파서 -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{ --primary:#409eff; --line:#ddd; --muted:#666; }
@@ -16,13 +17,12 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .hint{ font-size:12px; color:var(--muted); }
 .version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
 
-.statusbar{ border:1px dashed #e5e7eb; background:#fafafa; padding:6px 10px; border-radius:8px; margin-bottom:8px; font-size:12px; color:#555; display:flex; justify-content:space-between; gap:8px; }
-.statusbar .left{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.statusbar{ border:1px dashed #e5e7eb; background:#fafafa; padding:6px 10px; border-radius:8px; margin-bottom:8px; font-size:12px; color:#555; }
 
 .layout{ display:grid; grid-template-columns: 1fr 380px; gap:16px; }
 .canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
 
-/* 체커보드: 흰 선/면도 보이게 */
+/* 체커보드: 흰 요소도 보이게 */
 .svgHost{
   position:relative; min-height:500px; overflow:auto;
   background:
@@ -37,6 +37,16 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
 /* 배경은 보이되 드롭 금지 */
 [id^="bg"], [id^="BG"] { pointer-events:none; }
+
+/* ✅ 방 드롭 영역은 항상 히트되도록 (stroke만 있어도 클릭/드롭 가능) */
+[id]:not([id^="bg"]):not([id^="BG"]){ pointer-events: all !important; }
+[id]:not([id^="bg"]):not([id^="BG"]) rect,
+[id]:not([id^="bg"]):not([id^="BG"]) path,
+[id]:not([id^="bg"]):not([id^="BG"]) polygon,
+[id]:not([id^="bg"]):not([id^="BG"]) polyline,
+[id]:not([id^="bg"]):not([id^="BG"]) circle,
+[id]:not([id^="bg"]):not([id^="BG"]) ellipse,
+[id]:not([id^="bg"]):not([id^="BG"]) line { pointer-events: all !important; }
 
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
 #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
@@ -69,28 +79,19 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 <body>
   <header class="toolbar">
     <div class="group">
-      <label class="btn">
-        SVG 업로드(층 도면)
-        <input type="file" id="svgInput" accept=".svg" hidden/>
-      </label>
-      <label class="btn">
-        엑셀 업로드(교원 데이터)
-        <input type="file" id="xlInput" accept=".xlsx,.xlsm,.xls" hidden/>
-      </label>
+      <label class="btn">SVG 업로드<input type="file" id="svgInput" accept=".svg" hidden/></label>
+      <label class="btn">엑셀 업로드<input type="file" id="xlInput" accept=".xlsx,.xlsm,.xls" hidden/></label>
       <button id="resetBtn" class="btn">초기화</button>
-      <button id="fixBtn" class="btn">도면 표시 복구(윤곽선/투명)</button>
+      <button id="fixBtn" class="btn">도면 표시 복구</button>
     </div>
     <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
-      <span class="hint">bg는 보이되 드롭 금지 • 방 도형은 투명</span>
-      <span class="version" id="versionBadge">v1.08</span>
+      <span class="hint">bg는 드롭 금지 • 방은 투명</span>
+      <span class="version">v1.09</span>
     </div>
   </header>
 
-  <div class="statusbar">
-    <span id="status" class="left">v1.08 | 대기 중… SVG/엑셀을 업로드하세요</span>
-    <div class="right"></div>
-  </div>
+  <div class="statusbar"><span id="status">v1.09 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -101,7 +102,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
     <aside class="side">
       <h3>교수 목록</h3>
-      <div class="hint">정렬: 직위 → 호봉(내림) → 승급일(오름) → 생년월일(오름)</div>
+      <div class="hint">정렬: 직위 → 호봉(내림) → 승급일 → 생년월일</div>
       <div id="people" class="people scrollable"></div>
       <div class="hint" style="font-size:11px">※ 오른쪽 목록 영역으로 드래그하면 “배정 취소”</div>
     </aside>
@@ -131,14 +132,14 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     <div class="actions">
       <button id="clearRoom" class="btn">배정 전부 해제</button>
       <button id="closePanel" class="btn">닫기</button>
-      <button id="applyPanel" class="btn primary">적용</button>
+      <button id="applyPanel" class="btn" style="background:#409eff;color:#fff;border-color:#409eff">적용</button>
     </div>
   </div>
 
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.08 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.09 | ' + m;
 
   const state = { people:[], assigned:new Map(), roomState:new Map(), svgEl:null, search:"" };
 
@@ -154,12 +155,13 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const fixBtn    = document.getElementById('fixBtn');
   const searchInp = document.getElementById('search');
 
-  // 패널
+  // 방 설정 패널
   const panel=document.getElementById('roomPanel');
   const p_roomId=document.getElementById('p_roomId');
   const p_type=document.getElementById('p_type');
   const p_capacity=document.getElementById('p_capacity');
   const p_gender=document.getElementById('p_gender');
+
   document.getElementById('closePanel').addEventListener('click', ()=> panel.classList.remove('show'));
   document.getElementById('applyPanel').addEventListener('click', ()=>{
     const id=p_roomId.value, st=ensureRoom(id);
@@ -184,19 +186,18 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     if(!state.roomState.has(id)) state.roomState.set(id,{capacity:1,gender:"",type:"",occupants:[]});
     return state.roomState.get(id);
   }
-  const getPerson = (pid)=> state.people.find(x=>x.사번===pid);
+  const getPerson=(pid)=> state.people.find(x=>x.사번===pid);
 
   function nodeBBoxInHost(node){
     const r=node.getBoundingClientRect(), h=svgHost.getBoundingClientRect();
     return { x:r.left-h.left+svgHost.scrollLeft, y:r.top-h.top+svgHost.scrollTop, w:r.width, h:r.height };
   }
 
-  // ===== 핵심: 방 도형의 fill을 완전히 제거(속성/스타일/상속 모두) =====
+  /* ===== 채움 제거 + 히트 보장 ===== */
   function forceTransparentRooms(svg){
-    // 1) 우선순위 높은 CSS 규칙 주입 (상속/클래스/인라인까지 덮어씀)
-    const style = document.createElement('style');
-    style.textContent = `
-      /* bg는 그대로, 그 외 도형은 투명 */
+    // 우선순위 높은 CSS 주입 (상속/클래스/인라인까지 덮어씀)
+    const style=document.createElement('style');
+    style.textContent=`
       [id]:not([id^="bg"]):not([id^="BG"]) rect,
       [id]:not([id^="bg"]):not([id^="BG"]) path,
       [id]:not([id^="bg"]):not([id^="BG"]) polygon,
@@ -206,16 +207,18 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       [id]:not([id^="bg"]):not([id^="BG"]) line {
         fill: none !important;
         fill-opacity: 0 !important;
-      }
-    `;
+        pointer-events: all !important;
+      }`;
     svg.appendChild(style);
 
-    // 2) 각 도형에 직접 속성도 세팅(브라우저별 안전장치)
     const SHAPES=['rect','path','polygon','polyline','circle','ellipse','line'];
     svg.querySelectorAll('[id]').forEach(el=>{
-      if ((el.id||'').toLowerCase().startsWith('bg')) return; // 배경 제외
-      if (SHAPES.includes(el.tagName.toLowerCase())){
-        // 인라인 style의 fill 제거
+      const id=(el.id||'').toLowerCase();
+      if (id.startsWith('bg')) return; // 배경 제외
+      // 그룹에도 히트 보장
+      el.style.pointerEvents='all';
+      const tag=el.tagName.toLowerCase();
+      if (SHAPES.includes(tag)){
         const st=el.getAttribute('style')||'';
         if (/fill\s*:/i.test(st)) el.setAttribute('style', st.replace(/fill\s*:\s*[^;]+;?/ig,''));
         el.setAttribute('fill','none');
@@ -229,15 +232,12 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   function normalizeSvgAppearance(svg){
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
-
     // 텍스트는 보이게
     svg.querySelectorAll('text').forEach(t=>{
       if (!t.getAttribute('fill')) t.setAttribute('fill','#111827');
       const st=t.getAttribute('style')||'';
       if (/fill\s*:\s*transparent/i.test(st)) t.setAttribute('style', st.replace(/fill\s*:\s*transparent;?/ig,'fill:#111827;'));
     });
-
-    // 방 채움 완전 제거
     forceTransparentRooms(svg);
   }
 
@@ -250,7 +250,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       const chip=document.createElement('div');
       chip.className='occChip '+(p.성별==="남자"?"male":"female");
       chip.dataset.room=roomId; chip.dataset.pid=pid; chip.draggable=true;
-      chip.textContent=`${p.부서} ${p.성명}`;  /* ← (남)/(여) 제거 */
+      chip.textContent=`${p.부서} ${p.성명}`;   /* 성별 표기 제거 */
       const c=i%cols, r=Math.floor(i/cols);
       chip.style.left=`${box.x + pad + c * Math.max(90, (box.w - pad*2)/cols)}px`;
       chip.style.top =`${box.y + pad + r * 22}px`;
@@ -285,14 +285,14 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     });
   }
 
-  // 배정 취소 드롭존
+  // 우측 목록 = 배정 취소 드롭존
   peopleBox.addEventListener('dragover', e=>{ e.preventDefault(); peopleBox.classList.add('drop-hover'); });
   peopleBox.addEventListener('dragleave', ()=> peopleBox.classList.remove('drop-hover'));
   peopleBox.addEventListener('drop', e=>{
     e.preventDefault(); peopleBox.classList.remove('drop-hover');
     const pid=e.dataTransfer.getData('text/pid'); const prev=e.dataTransfer.getData('text/roomId')||null;
     if(!pid||!prev) return;
-    const st=ensureRoom(prev); st.occupants = st.occupants.filter(x=>x!==pid);
+    const st=ensureRoom(prev); st.occupants=st.occupants.filter(x=>x!==pid);
     state.assigned.delete(pid);
     renderRoom(prev); renderPeople();
     setStatus(`배정 취소: ${pid}`);
@@ -307,51 +307,85 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svgHost.innerHTML=""; svgHost.appendChild(svg); state.svgEl=svg;
 
-    // 가시화 정리: 방은 투명(검은 박스 방지), 텍스트는 보이게
+    // 방은 투명 + 히트 보장
     normalizeSvgAppearance(svg);
 
-    attachRoomHandlers();
+    attachRoomHandlers();   // (v1.09) 이벤트 위임 방식
     setStatus('SVG 로드 완료: 드롭존 인식 중…');
   }
 
+  /* ✅ (v1.09) 이벤트 위임으로 드롭/클릭 처리: <g> 그룹도 OK */
   function attachRoomHandlers(){
     const svg=state.svgEl; if(!svg) return;
-    const nodes=svg.querySelectorAll('[id]');
-    let zones=0;
-    nodes.forEach(node=>{
-      const id=node.id||""; const tag=node.tagName.toLowerCase();
-      const isShape=['rect','path','polygon','polyline','circle','ellipse','line'].includes(tag);
-      if(!isShape) return;
-      if(id.toLowerCase().startsWith('bg')) return; // 배경은 드롭 금지
-      zones++;
-      node.style.cursor='pointer';
-      node.addEventListener('mouseenter', ()=> node.classList.add('room-hover'));
-      node.addEventListener('mouseleave', ()=> node.classList.remove('room-hover'));
-      node.addEventListener('dragover', e=> e.preventDefault());
-      node.addEventListener('drop', e=>{
-        e.preventDefault();
-        const json=e.dataTransfer.getData('application/json'); const pid=e.dataTransfer.getData('text/pid');
-        const prev=e.dataTransfer.getData('text/roomId')||null; if(!json||!pid) return;
-        const p=JSON.parse(json); const st=ensureRoom(id);
 
-        // 간단 검증(필요시 더 추가)
-        if (st.gender && st.gender!==p.성별){ alert(`성별 제한: ${st.gender} 방입니다.`); return; }
-        if (st.capacity && st.occupants.length >= st.capacity){ alert(`정원 초과 (정원: ${st.capacity})`); return; }
-
-        if (state.assigned.has(pid)){ const old=state.assigned.get(pid); const os=ensureRoom(old); os.occupants=os.occupants.filter(x=>x!==pid); renderRoom(old); }
-        st.occupants.push(pid); state.assigned.set(pid,id);
-        renderRoom(id); renderPeople();
-        setStatus(`배정: ${p.성명} → ${id}`);
-      });
-
-      // 클릭 → 방 설정
-      node.addEventListener('click', ()=>{
-        const st=ensureRoom(id);
-        p_roomId.value=id; p_type.value=st.type||""; p_capacity.value=st.capacity||1; p_gender.value=st.gender||"";
-        document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
-        panel.classList.add('show');
-      });
+    // hover 표시
+    svg.addEventListener('mousemove', (e)=>{
+      const node = e.target.closest('[id]');
+      svg.querySelectorAll('.room-hover').forEach(n=>n.classList.remove('room-hover'));
+      if (!node) return;
+      const id=(node.id||'').toLowerCase();
+      if (id.startsWith('bg')) return;
+      node.classList.add('room-hover');
     });
+
+    // 드래그 오버
+    svg.addEventListener('dragover', (e)=>{
+      const node = e.target.closest('[id]');
+      if (!node) return;
+      const id=(node.id||'').toLowerCase();
+      if (id.startsWith('bg')) return;
+      e.preventDefault();
+    });
+
+    // 드롭
+    svg.addEventListener('drop', (e)=>{
+      const node = e.target.closest('[id]');
+      if (!node) return;
+      const roomId = node.id;
+      if (roomId.toLowerCase().startsWith('bg')) return;
+      e.preventDefault();
+
+      const json=e.dataTransfer.getData('application/json');
+      const pid =e.dataTransfer.getData('text/pid');
+      const prev=e.dataTransfer.getData('text/roomId')||null;
+      if(!json||!pid) return;
+
+      const p=JSON.parse(json);
+      const st=ensureRoom(roomId);
+      if (st.gender && st.gender!==p.성별){ alert(`성별 제한: ${st.gender} 방입니다.`); return; }
+      if (st.capacity && st.occupants.length>=st.capacity){ alert(`정원 초과 (정원: ${st.capacity})`); return; }
+
+      if (state.assigned.has(pid)){
+        const old=state.assigned.get(pid);
+        const os=ensureRoom(old);
+        os.occupants=os.occupants.filter(x=>x!==pid);
+        renderRoom(old);
+      }
+      st.occupants.push(pid);
+      state.assigned.set(pid, roomId);
+      renderRoom(roomId);
+      renderPeople();
+      setStatus(`배정: ${p.성명} → ${roomId}`);
+    });
+
+    // 클릭 → 방 설정 패널
+    svg.addEventListener('click', (e)=>{
+      const node = e.target.closest('[id]');
+      if (!node) return;
+      const id = node.id;
+      if ((id||'').toLowerCase().startsWith('bg')) return;
+      const st=ensureRoom(id);
+      p_roomId.value=id; p_type.value=st.type||""; p_capacity.value=st.capacity||1; p_gender.value=st.gender||"";
+      document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
+      panel.classList.add('show');
+    });
+
+    // 드롭존 수 집계(참고용)
+    const zones = [...svg.querySelectorAll('[id]')].filter(n=>{
+      const t=n.tagName.toLowerCase(); const id=(n.id||'').toLowerCase();
+      const isTarget=['rect','path','polygon','polyline','circle','ellipse','line','g'].includes(t);
+      return isTarget && !id.startsWith('bg');
+    }).length;
     setStatus(`SVG 로드 완료: 드롭존 ${zones}개`);
   }
 
@@ -375,7 +409,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     setStatus(`엑셀 로드 완료: ${ppl.length}명`);
   }
 
-  // 이벤트
+  // 입력 이벤트
   svgInput.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('SVG 선택 취소'); return; } loadSvgFromFile(f); });
   xlInput .addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('엑셀 선택 취소'); return; } loadExcelFromFile(f); });
   resetBtn.addEventListener('click', ()=>{
@@ -385,8 +419,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   });
   fixBtn.addEventListener('click', ()=>{
     if(!state.svgEl){ alert('먼저 SVG를 업로드하세요'); return; }
-    normalizeSvgAppearance(state.svgEl); // 내부에서 forceTransparentRooms 호출
-    setStatus('도면 표시 복구 적용(윤곽/투명)');
+    normalizeSvgAppearance(state.svgEl);
+    setStatus('도면 표시 복구 적용');
   });
   searchInp.addEventListener('input', ()=>{ state.search=searchInp.value||""; renderPeople(); });
 
