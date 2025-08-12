@@ -9,15 +9,19 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .btn.ghost{ background:#fff; color:#333; }
 .hint{ font-size:12px; color:var(--muted); }
 .hint.small{ font-size:11px; }
+.version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
 
-.layout{ display:grid; grid-template-columns: 1fr 360px; gap:16px; }
-.canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:540px; }
-.svgHost{ position:relative; min-height:480px; }
-.svgHost svg{ max-width:100%; height:auto; display:block; }
-.placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:460px; border:2px dashed #ccc; border-radius:12px; }
+.layout{ display:grid; grid-template-columns: 1fr 380px; gap:16px; }
+.canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
+.svgHost{ position:relative; min-height:500px; overflow:auto; }
+.svgHost svg{ width:100%; height:auto; display:block; }
+.placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
 
-.side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:540px; }
+.side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
+#search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
+
 .people{ min-height:200px; border:2px dashed #e6e6e6; border-radius:10px; padding:8px; }
+.scrollable{ max-height:440px; overflow:auto; }
 .people.drop-hover{ outline:2px solid var(--primary); }
 .people .card{ border:1px solid #eee; border-radius:10px; padding:8px; margin-bottom:8px; background:#fafafa; cursor:grab; }
 .card.male{ border-color:#8bb; background:#eef6ff; }
