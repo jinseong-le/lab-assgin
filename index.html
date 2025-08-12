@@ -2,9 +2,8 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.09 (All-in-one)</title>
+<title>연구실 배정 v1.10 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<!-- 엑셀 파서 -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{ --primary:#409eff; --line:#ddd; --muted:#666; }
@@ -14,7 +13,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; }
 .group{ display:flex; gap:8px; align-items:center; }
 .btn{ border:1px solid var(--line); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
-.hint{ font-size:12px; color:var(--muted); }
+.hint{ font-size:12px; color:#666; }
 .version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
 
 .statusbar{ border:1px dashed #e5e7eb; background:#fafafa; padding:6px 10px; border-radius:8px; margin-bottom:8px; font-size:12px; color:#555; }
@@ -22,15 +21,15 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .layout{ display:grid; grid-template-columns: 1fr 380px; gap:16px; }
 .canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
 
-/* 체커보드: 흰 요소도 보이게 */
-.svgHost{
-  position:relative; min-height:500px; overflow:auto;
+/* 체커보드(흰 개체도 보이게) */
+.svgHost{ position:relative; min-height:500px; overflow:auto;
   background:
     linear-gradient(45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
     linear-gradient(-45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
     linear-gradient(45deg, transparent 75%, #f6f7f9 75%) -8px 0/16px 16px,
     linear-gradient(-45deg, transparent 75%, #f6f7f9 75%) -8px 0/16px 16px;
   background-color:#fff;
+  touch-action:none;
 }
 .svgHost svg{ width:100%; height:auto; display:block; }
 .placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
@@ -38,7 +37,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 /* 배경은 보이되 드롭 금지 */
 [id^="bg"], [id^="BG"] { pointer-events:none; }
 
-/* ✅ 방 드롭 영역은 항상 히트되도록 (stroke만 있어도 클릭/드롭 가능) */
+/* ✅ 드롭 가능한 방: stroke만 있어도 내부 전체 히트 */
 [id]:not([id^="bg"]):not([id^="BG"]){ pointer-events: all !important; }
 [id]:not([id^="bg"]):not([id^="BG"]) rect,
 [id]:not([id^="bg"]):not([id^="BG"]) path,
@@ -46,11 +45,13 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 [id]:not([id^="bg"]):not([id^="BG"]) polyline,
 [id]:not([id^="bg"]):not([id^="BG"]) circle,
 [id]:not([id^="bg"]):not([id^="BG"]) ellipse,
-[id]:not([id^="bg"]):not([id^="BG"]) line { pointer-events: all !important; }
+[id]:not([id^="bg"]):not([id^="BG"]) line {
+  pointer-events: bounding-box !important; /* 핵심 */
+}
 
+/* 리스트/칩 */
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
 #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
-
 .people{ min-height:200px; border:2px dashed #e6e6e6; border-radius:10px; padding:8px; }
 .people.scrollable{ max-height:60vh; overflow:auto; }
 .people.drop-hover{ outline:2px solid var(--primary); }
@@ -59,12 +60,16 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .card.female{ border-color:#b88; background:#ffeef0; }
 .card .meta{ font-size:12px; color:#555; margin-top:2px; }
 
+/* 방 강조/칩 */
 .room-hover{ outline:2px solid var(--primary); outline-offset:2px; }
 .badge{ display:inline-block; padding:2px 6px; border-radius:10px; background:#eef; margin-left:6px; font-size:12px; }
-
 .occChip{ position:absolute; font-size:12px; padding:2px 6px; border-radius:8px; background:#fafafa; border:1px solid #ccc; pointer-events:auto; cursor:grab; white-space:nowrap; }
 .occChip.male{ border-color:#7aa; background:#eef6ff; }
 .occChip.female{ border-color:#a77; background:#ffeef0; }
+
+/* 드래그 중 칩이 이벤트 가리는 것 방지 */
+body.dragging .occChip{ pointer-events:none !important; }
+body.dragging{ user-select:none; cursor:grabbing; }
 
 /* 방 설정 패널 */
 .panel{ position:fixed; right:16px; top:96px; width:340px; border:1px solid var(--line); background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.08); padding:12px; display:none; }
@@ -86,12 +91,12 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     </div>
     <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
-      <span class="hint">bg는 드롭 금지 • 방은 투명</span>
-      <span class="version">v1.09</span>
+      <span class="hint">bg는 드롭 금지 • 방은 투명 (히트보장)</span>
+      <span class="version">v1.10</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.09 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.10 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -139,7 +144,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.09 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.10 | ' + m;
 
   const state = { people:[], assigned:new Map(), roomState:new Map(), svgEl:null, search:"" };
 
@@ -161,7 +166,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const p_type=document.getElementById('p_type');
   const p_capacity=document.getElementById('p_capacity');
   const p_gender=document.getElementById('p_gender');
-
   document.getElementById('closePanel').addEventListener('click', ()=> panel.classList.remove('show'));
   document.getElementById('applyPanel').addEventListener('click', ()=>{
     const id=p_roomId.value, st=ensureRoom(id);
@@ -177,9 +181,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     setStatus(`방 배정 전부 해제: ${id}`);
   });
   p_type.addEventListener('change', ()=>{
-    const v=p_type.value;
-    const cap=v==="1인실"?1:v==="2인실"?2:v==="3인실"?3:v==="4인실"?4:v==="6인실"?6:1;
-    p_capacity.value=cap;
+    const v=p_type.value; const cap=v==="1인실"?1:v==="2인실"?2:v==="3인실"?3:v==="4인실"?4:v==="6인실"?6:1; p_capacity.value=cap;
   });
 
   function ensureRoom(id){
@@ -193,9 +195,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     return { x:r.left-h.left+svgHost.scrollLeft, y:r.top-h.top+svgHost.scrollTop, w:r.width, h:r.height };
   }
 
-  /* ===== 채움 제거 + 히트 보장 ===== */
+  /* ===== 방 내부는 투명 + 히트 보장 ===== */
   function forceTransparentRooms(svg){
-    // 우선순위 높은 CSS 주입 (상속/클래스/인라인까지 덮어씀)
     const style=document.createElement('style');
     style.textContent=`
       [id]:not([id^="bg"]):not([id^="BG"]) rect,
@@ -207,22 +208,22 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       [id]:not([id^="bg"]):not([id^="BG"]) line {
         fill: none !important;
         fill-opacity: 0 !important;
-        pointer-events: all !important;
+        pointer-events: bounding-box !important;
+        stroke: #6b7280;
+        stroke-width: 1;
       }`;
     svg.appendChild(style);
 
     const SHAPES=['rect','path','polygon','polyline','circle','ellipse','line'];
     svg.querySelectorAll('[id]').forEach(el=>{
       const id=(el.id||'').toLowerCase();
-      if (id.startsWith('bg')) return; // 배경 제외
-      // 그룹에도 히트 보장
-      el.style.pointerEvents='all';
+      if (id.startsWith('bg')) return;
+      el.style.pointerEvents='all'; // <g>도 히트
       const tag=el.tagName.toLowerCase();
       if (SHAPES.includes(tag)){
         const st=el.getAttribute('style')||'';
         if (/fill\s*:/i.test(st)) el.setAttribute('style', st.replace(/fill\s*:\s*[^;]+;?/ig,''));
-        el.setAttribute('fill','none');
-        el.setAttribute('fill-opacity','0');
+        el.setAttribute('fill','none'); el.setAttribute('fill-opacity','0');
         if (!el.getAttribute('stroke')) el.setAttribute('stroke','#6b7280');
         if (!el.getAttribute('stroke-width')) el.setAttribute('stroke-width','1');
       }
@@ -232,12 +233,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   function normalizeSvgAppearance(svg){
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
-    // 텍스트는 보이게
-    svg.querySelectorAll('text').forEach(t=>{
-      if (!t.getAttribute('fill')) t.setAttribute('fill','#111827');
-      const st=t.getAttribute('style')||'';
-      if (/fill\s*:\s*transparent/i.test(st)) t.setAttribute('style', st.replace(/fill\s*:\s*transparent;?/ig,'fill:#111827;'));
-    });
+    svg.querySelectorAll('text').forEach(t=>{ if (!t.getAttribute('fill')) t.setAttribute('fill','#111827'); });
     forceTransparentRooms(svg);
   }
 
@@ -250,16 +246,19 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       const chip=document.createElement('div');
       chip.className='occChip '+(p.성별==="남자"?"male":"female");
       chip.dataset.room=roomId; chip.dataset.pid=pid; chip.draggable=true;
-      chip.textContent=`${p.부서} ${p.성명}`;   /* 성별 표기 제거 */
+      chip.textContent=`${p.부서} ${p.성명}`;
       const c=i%cols, r=Math.floor(i/cols);
       chip.style.left=`${box.x + pad + c * Math.max(90, (box.w - pad*2)/cols)}px`;
       chip.style.top =`${box.y + pad + r * 22}px`;
       chip.addEventListener('dragstart', e=>{
+        document.body.classList.add('dragging');
         e.dataTransfer.setData('application/json', JSON.stringify(p));
-        e.dataTransfer.setData('text/pid', pid);
+        e.dataTransfer.setData('text/pid', p.사번);
         e.dataTransfer.setData('text/from','room');
         e.dataTransfer.setData('text/roomId', roomId);
+        e.dataTransfer.setData('text/plain','drag'); // 호환성 ↑
       });
+      chip.addEventListener('dragend', ()=> document.body.classList.remove('dragging'));
       svgHost.appendChild(chip);
     });
     node.style.filter = st.occupants.length>0 ? "drop-shadow(0 0 4px rgba(64,158,255,.6))" : "";
@@ -277,10 +276,13 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       card.innerHTML=`<div><b>${p.성명}</b> <span class="badge">${p.직위}</span></div>
                       <div class="meta">${p.부서} · ${p.성별} · 승급:${p.승급일} · 생:${p.생년월일} · 호봉:${p.호봉}</div>`;
       card.addEventListener('dragstart', e=>{
+        document.body.classList.add('dragging');
         e.dataTransfer.setData('application/json', JSON.stringify(p));
         e.dataTransfer.setData('text/pid', p.사번);
         e.dataTransfer.setData('text/from','list');
+        e.dataTransfer.setData('text/plain','drag'); // 호환성 ↑
       });
+      card.addEventListener('dragend', ()=> document.body.classList.remove('dragging'));
       peopleBox.appendChild(card);
     });
   }
@@ -298,6 +300,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     setStatus(`배정 취소: ${pid}`);
   });
 
+  // SVG 로드
   async function loadSvgFromFile(file){
     setStatus(`SVG 선택됨: ${file.name}`);
     const text=await file.text();
@@ -307,20 +310,26 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svgHost.innerHTML=""; svgHost.appendChild(svg); state.svgEl=svg;
 
-    // 방은 투명 + 히트 보장
     normalizeSvgAppearance(svg);
-
-    attachRoomHandlers();   // (v1.09) 이벤트 위임 방식
-    setStatus('SVG 로드 완료: 드롭존 인식 중…');
+    attachRoomHandlers();
+    setStatus('SVG 로드 완료: 드롭 준비');
   }
 
-  /* ✅ (v1.09) 이벤트 위임으로 드롭/클릭 처리: <g> 그룹도 OK */
+  // 가장 가까운 id 가진 조상 찾기 (SVG 호환)
+  function closestWithId(el, root){
+    while(el && el !== root){
+      if (el.getAttribute && el.getAttribute('id')) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  // 이벤트 위임: hover/dragover/drop/click
   function attachRoomHandlers(){
     const svg=state.svgEl; if(!svg) return;
 
-    // hover 표시
     svg.addEventListener('mousemove', (e)=>{
-      const node = e.target.closest('[id]');
+      const node = closestWithId(e.target, svg);
       svg.querySelectorAll('.room-hover').forEach(n=>n.classList.remove('room-hover'));
       if (!node) return;
       const id=(node.id||'').toLowerCase();
@@ -328,20 +337,18 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       node.classList.add('room-hover');
     });
 
-    // 드래그 오버
-    svg.addEventListener('dragover', (e)=>{
-      const node = e.target.closest('[id]');
+    // svg & host 양쪽에 dragover/drop 연결 (브라우저별 편차 흡수)
+    const dragOver = (e)=>{
+      const node = closestWithId(e.target, state.svgEl || e.currentTarget);
       if (!node) return;
       const id=(node.id||'').toLowerCase();
       if (id.startsWith('bg')) return;
       e.preventDefault();
-    });
-
-    // 드롭
-    svg.addEventListener('drop', (e)=>{
-      const node = e.target.closest('[id]');
+    };
+    const drop = (e)=>{
+      const node = closestWithId(e.target, state.svgEl || e.currentTarget);
       if (!node) return;
-      const roomId = node.id;
+      const roomId=node.id;
       if (roomId.toLowerCase().startsWith('bg')) return;
       e.preventDefault();
 
@@ -366,11 +373,16 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       renderRoom(roomId);
       renderPeople();
       setStatus(`배정: ${p.성명} → ${roomId}`);
-    });
+    };
 
-    // 클릭 → 방 설정 패널
+    svg.addEventListener('dragover', dragOver);
+    svg.addEventListener('drop', drop);
+    svgHost.addEventListener('dragover', dragOver);
+    svgHost.addEventListener('drop', drop);
+
+    // 클릭 → 패널
     svg.addEventListener('click', (e)=>{
-      const node = e.target.closest('[id]');
+      const node = closestWithId(e.target, svg);
       if (!node) return;
       const id = node.id;
       if ((id||'').toLowerCase().startsWith('bg')) return;
@@ -379,16 +391,9 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
       panel.classList.add('show');
     });
-
-    // 드롭존 수 집계(참고용)
-    const zones = [...svg.querySelectorAll('[id]')].filter(n=>{
-      const t=n.tagName.toLowerCase(); const id=(n.id||'').toLowerCase();
-      const isTarget=['rect','path','polygon','polyline','circle','ellipse','line','g'].includes(t);
-      return isTarget && !id.startsWith('bg');
-    }).length;
-    setStatus(`SVG 로드 완료: 드롭존 ${zones}개`);
   }
 
+  // 엑셀 로드
   async function loadExcelFromFile(file){
     setStatus(`엑셀 선택됨: ${file.name}`);
     if(typeof XLSX==='undefined'){ alert('XLSX 로더가 차단됨'); setStatus('엑셀 로더 없음'); return; }
@@ -409,7 +414,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     setStatus(`엑셀 로드 완료: ${ppl.length}명`);
   }
 
-  // 입력 이벤트
+  // 이벤트
   svgInput.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('SVG 선택 취소'); return; } loadSvgFromFile(f); });
   xlInput .addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('엑셀 선택 취소'); return; } loadExcelFromFile(f); });
   resetBtn.addEventListener('click', ()=>{
