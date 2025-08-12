@@ -2,11 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"/>
-  <title>연구실 배정 데모</title>
+  <title>연구실 배정 v1.0</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="stylesheet" href="styles.css"/>
-
-  <!-- SheetJS (엑셀 파서) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -22,7 +20,11 @@
       </label>
       <button id="resetBtn" class="btn">초기화</button>
     </div>
-    <div class="hint">※ id가 <b>bg</b>로 시작하는 요소(배경)는 드롭 불가입니다.</div>
+    <div class="group">
+      <input id="search" type="text" placeholder="교수 이름 검색" />
+      <span class="hint">id가 <b>bg</b>로 시작하는 요소(배경)는 드롭 불가</span>
+      <span class="version">v1.0</span>
+    </div>
   </header>
 
   <main class="layout">
@@ -35,8 +37,8 @@
     <aside class="side">
       <h3>교수 목록</h3>
       <div class="hint">정렬: 직위 → 호봉(내림) → 승급일(오름) → 생년월일(오름)</div>
-      <div id="people" class="people"></div>
-      <div class="hint small">※ 오른쪽 목록으로 드래그하면 배정 취소</div>
+      <div id="people" class="people scrollable"></div>
+      <div class="hint small">※ 오른쪽 목록 영역으로 드래그하면 배정 취소</div>
     </aside>
   </main>
 
