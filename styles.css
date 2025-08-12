@@ -4,6 +4,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
 .toolbar{ display:flex; gap:16px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; }
 .group{ display:flex; gap:8px; align-items:center; }
+.group.right{ margin-left:auto; }
 .btn{ border:1px solid var(--line); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
 .btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
 .btn.ghost{ background:#fff; color:#333; }
@@ -23,7 +24,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
 
 .people{ min-height:200px; border:2px dashed #e6e6e6; border-radius:10px; padding:8px; }
-.scrollable{ max-height:440px; overflow:auto; }
+.scrollable{ max-height:60vh; overflow:auto; }
 .people.drop-hover{ outline:2px solid var(--primary); }
 .people .card{ border:1px solid #eee; border-radius:10px; padding:8px; margin-bottom:8px; background:#fafafa; cursor:grab; }
 .card.male{ border-color:#8bb; background:#eef6ff; }
