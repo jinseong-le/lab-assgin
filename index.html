@@ -1,14 +1,63 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8"/>
-  <title>연구실 배정 v1.02</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <link rel="stylesheet" href="styles.css"/>
-  <!-- SheetJS (엑셀 파서) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- 앱 스크립트는 DOM 이후 실행 -->
-  <script defer src="app.js"></script>
+<meta charset="utf-8"/>
+<title>연구실 배정 v1.04 (All-in-one)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{ --primary:#409eff; --line:#ddd; --muted:#666; }
+*{ box-sizing:border-box }
+body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; margin:16px; color:#222; }
+
+.toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; }
+.group{ display:flex; gap:8px; align-items:center; }
+.btn{ border:1px solid var(--line); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+.btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
+.hint{ font-size:12px; color:var(--muted); }
+.version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
+
+.statusbar{ border:1px dashed #e5e7eb; background:#fafafa; padding:6px 10px; border-radius:8px; margin-bottom:12px; font-size:12px; color:#555; }
+
+.layout{ display:grid; grid-template-columns: 1fr 380px; gap:16px; }
+.canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
+
+/* 체커보드 배경: 흰 객체도 보이도록 */
+.svgHost{
+  position:relative; min-height:500px; overflow:auto;
+  background:
+    linear-gradient(45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
+    linear-gradient(-45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
+    linear-gradient(45deg, transparent 75%, #f6f7f9 75%) -8px 0/16px 16px,
+    linear-gradient(-45deg, transparent 75%, #f6f7f9 75%) -8px 0/16px 16px;
+  background-color:#fff;
+}
+.svgHost svg{ width:100%; height:auto; display:block; }
+.placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
+
+.side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
+#search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:220px; }
+
+.people{ min-height:200px; border:2px dashed #e6e6e6; border-radius:10px; padding:8px; }
+.people.scrollable{ max-height:60vh; overflow:auto; }
+.people.drop-hover{ outline:2px solid var(--primary); }
+.people .card{ border:1px solid #eee; border-radius:10px; padding:8px; margin-bottom:8px; background:#fafafa; cursor:grab; }
+.card.male{ border-color:#8bb; background:#eef6ff; }
+.card.female{ border-color:#b88; background:#ffeef0; }
+.card .meta{ font-size:12px; color:#555; margin-top:2px; }
+
+.room-hover{ outline:2px solid var(--primary); outline-offset:2px; }
+.badge{ display:inline-block; padding:2px 6px; border-radius:10px; background:#eef; margin-left:6px; font-size:12px; }
+
+.occChip{ position:absolute; font-size:12px; padding:2px 6px; border-radius:8px; background:#fafafa; border:1px solid #ccc; pointer-events:auto; cursor:grab; white-space:nowrap; }
+.occChip.male{ border-color:#7aa; background:#eef6ff; }
+.occChip.female{ border-color:#a77; background:#ffeef0; }
+
+/* 복구 토글 on일 때 svg 전체에 임시 윤곽선 */
+.force-outline [id]:not([id^="bg"]) {
+  /* 여기는 JS에서 style 속성 주입으로 처리하므로 CSS는 보조용 */
+}
+</style>
 </head>
 <body>
   <header class="toolbar">
@@ -22,18 +71,17 @@
         <input type="file" id="xlInput" accept=".xlsx,.xlsm,.xls" hidden/>
       </label>
       <button id="resetBtn" class="btn">초기화</button>
+      <button id="fixBtn" class="btn">도면 표시 복구</button>
     </div>
 
-    <div class="group right">
+    <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
       <span class="hint">배경(id가 <b>bg</b> 시작)은 드롭 불가</span>
-      <span class="version" id="versionBadge">v1.02</span>
+      <span class="version" id="versionBadge">v1.04</span>
     </div>
   </header>
 
-  <div class="statusbar">
-    <span id="status">v1.02 | 대기 중… SVG/엑셀을 업로드하세요</span>
-  </div>
+  <div class="statusbar"><span id="status">v1.04 | 대기 중… SVG/엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -46,8 +94,85 @@
       <h3>교수 목록</h3>
       <div class="hint">정렬: 직위 → 호봉(내림) → 승급일(오름) → 생년월일(오름)</div>
       <div id="people" class="people scrollable"></div>
-      <div class="hint small">※ 오른쪽 목록 영역으로 드래그하면 “배정 취소”</div>
+      <div class="hint" style="font-size:11px">※ 오른쪽 목록 영역으로 드래그하면 “배정 취소”</div>
     </aside>
   </main>
-</body>
-</html>
+
+<script>
+(() => {
+  // ========= 상태 =========
+  const state = {
+    people: [],            // 전체 인물
+    assigned: new Map(),   // pid -> roomId
+    roomState: new Map(),  // roomId -> {capacity, gender, type, occupants:[pid]}
+    svgEl: null,
+    search: "",
+    fixed: false,          // 복구모드 여부
+  };
+
+  // ========= 우선순위 =========
+  const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
+  const toInt = s => { const n = parseInt(String(s||"").split(".")[0],10); return isNaN(n) ? -999999 : n; };
+  const sortPeople = (a,b) => {
+    const t = (TITLE_ORDER[a.직위]||99) - (TITLE_ORDER[b.직위]||99);
+    if (t!==0) return t;
+    const s = toInt(b.호봉) - toInt(a.호봉);
+    if (s!==0) return s;
+    const p = String(a.승급일||"").localeCompare(String(b.승급일||""));
+    if (p!==0) return p;
+    return String(a.생년월일||"").localeCompare(String(b.생년월일||""));
+  };
+
+  // ========= DOM =========
+  const svgHost   = document.getElementById('svgHost');
+  const peopleBox = document.getElementById('people');
+  const svgInput  = document.getElementById('svgInput');
+  const xlInput   = document.getElementById('xlInput');
+  const resetBtn  = document.getElementById('resetBtn');
+  const fixBtn    = document.getElementById('fixBtn');
+  const searchInp = document.getElementById('search');
+  const statusEl  = document.getElementById('status');
+  const setStatus = (msg)=>{ if(statusEl) statusEl.textContent = `v1.04 | ${msg}`; console.log('[STATUS]', msg); };
+
+  // ========= 유틸 =========
+  const ensureRoom = (roomId)=>{
+    if(!state.roomState.has(roomId)){
+      state.roomState.set(roomId, {capacity:1, gender:"", type:"", occupants:[]});
+    }
+    return state.roomState.get(roomId);
+  };
+  const getPerson = (pid)=> state.people.find(x=>x.사번===pid);
+  const nodeBBoxInHost = (node)=>{
+    const r = node.getBoundingClientRect();
+    const hostR = svgHost.getBoundingClientRect();
+    return { x: r.left - hostR.left + svgHost.scrollLeft, y: r.top - hostR.top + svgHost.scrollTop, w: r.width, h: r.height };
+  };
+
+  // ========= SVG 가시화 복구 =========
+  function normalizeSvgAppearance(svg){
+    // 1) viewBox 보정
+    try {
+      if (!svg.getAttribute('viewBox')) {
+        const w = parseFloat(svg.getAttribute('width')) || 1000;
+        const h = parseFloat(svg.getAttribute('height')) || 800;
+        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      }
+      svg.removeAttribute('width'); svg.removeAttribute('height');
+      // 전체 bbox 기준 재설정
+      const nodes = svg.querySelectorAll('*');
+      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      nodes.forEach(n=>{
+        if (typeof n.getBBox === 'function') {
+          try{
+            const b = n.getBBox();
+            if (isFinite(b.x) && isFinite(b.y) && isFinite(b.width) && isFinite(b.height)){
+              minX = Math.min(minX, b.x);
+              minY = Math.min(minY, b.y);
+              maxX = Math.max(maxX, b.x + b.width);
+              maxY = Math.max(maxY, b.y + b.height);
+            }
+          }catch(_){}
+        }
+      });
+      if (minX < Infinity) {
+        const v
