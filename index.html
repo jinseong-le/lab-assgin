@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.07 (All-in-one)</title>
+<title>연구실 배정 v1.08 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -13,7 +13,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; }
 .group{ display:flex; gap:8px; align-items:center; }
 .btn{ border:1px solid var(--line); background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
-.btn.primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
 .hint{ font-size:12px; color:var(--muted); }
 .version{ font-size:12px; background:#f2f6ff; border:1px solid #cfe0ff; color:#2b5db7; padding:4px 8px; border-radius:8px; }
 
@@ -65,8 +64,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .row label{ width:84px; font-size:13px; color:#444; }
 .row input, .row select{ flex:1; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
 .panel .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
-
-.debug{ display:none; }
 </style>
 </head>
 <body>
@@ -81,17 +78,17 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
         <input type="file" id="xlInput" accept=".xlsx,.xlsm,.xls" hidden/>
       </label>
       <button id="resetBtn" class="btn">초기화</button>
-      <button id="fixBtn" class="btn">도면 표시 복구(윤곽선만)</button>
+      <button id="fixBtn" class="btn">도면 표시 복구(윤곽선/투명)</button>
     </div>
     <div class="group">
       <input id="search" type="text" placeholder="교수 이름 검색"/>
       <span class="hint">bg는 보이되 드롭 금지 • 방 도형은 투명</span>
-      <span class="version" id="versionBadge">v1.07</span>
+      <span class="version" id="versionBadge">v1.08</span>
     </div>
   </header>
 
   <div class="statusbar">
-    <span id="status" class="left">v1.07 | 대기 중… SVG/엑셀을 업로드하세요</span>
+    <span id="status" class="left">v1.08 | 대기 중… SVG/엑셀을 업로드하세요</span>
     <div class="right"></div>
   </div>
 
@@ -141,13 +138,13 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.07 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.08 | ' + m;
 
   const state = { people:[], assigned:new Map(), roomState:new Map(), svgEl:null, search:"" };
 
   const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
-  const toInt = s => { const n = parseInt(String(s||"").split(".")[0],10); return isNaN(n) ? -999999 : n; };
-  const sortPeople = (a,b)=>{ const t=(TITLE_ORDER[a.직위]||99)-(TITLE_ORDER[b.직위]||99); if(t) return t; const s=toInt(b.호봉)-toInt(a.호봉); if(s) return s; const p=String(a.승급일||"").localeCompare(String(b.승급일||"")); if(p) return p; return String(a.생년월일||"").localeCompare(String(b.생년월일||"")); };
+  const toInt = s => { const n=parseInt(String(s||"").split(".")[0],10); return isNaN(n)?-999999:n; };
+  const sortPeople=(a,b)=>{ const t=(TITLE_ORDER[a.직위]||99)-(TITLE_ORDER[b.직위]||99); if(t) return t; const s=toInt(b.호봉)-toInt(a.호봉); if(s) return s; const p=String(a.승급일||"").localeCompare(String(b.승급일||"")); if(p) return p; return String(a.생년월일||"").localeCompare(String(b.생년월일||"")); };
 
   const svgHost   = document.getElementById('svgHost');
   const peopleBox = document.getElementById('people');
@@ -157,34 +154,34 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const fixBtn    = document.getElementById('fixBtn');
   const searchInp = document.getElementById('search');
 
-  // 패널 엘리먼트
-  const panel      = document.getElementById('roomPanel');
-  const p_roomId   = document.getElementById('p_roomId');
-  const p_type     = document.getElementById('p_type');
-  const p_capacity = document.getElementById('p_capacity');
-  const p_gender   = document.getElementById('p_gender');
+  // 패널
+  const panel=document.getElementById('roomPanel');
+  const p_roomId=document.getElementById('p_roomId');
+  const p_type=document.getElementById('p_type');
+  const p_capacity=document.getElementById('p_capacity');
+  const p_gender=document.getElementById('p_gender');
   document.getElementById('closePanel').addEventListener('click', ()=> panel.classList.remove('show'));
   document.getElementById('applyPanel').addEventListener('click', ()=>{
-    const id = p_roomId.value; const st = ensureRoom(id);
-    st.type = p_type.value;
-    st.capacity = Math.max(1, parseInt(p_capacity.value||"1",10));
-    st.gender = p_gender.value;
+    const id=p_roomId.value, st=ensureRoom(id);
+    st.type=p_type.value;
+    st.capacity=Math.max(1,parseInt(p_capacity.value||"1",10));
+    st.gender=p_gender.value;
     setStatus(`방 설정 적용: ${id} (타입:${st.type||"자유"}, 정원:${st.capacity}, 성별:${st.gender||"무관"})`);
   });
   document.getElementById('clearRoom').addEventListener('click', ()=>{
-    const id = p_roomId.value; const st = ensureRoom(id);
-    st.occupants.forEach(pid => state.assigned.delete(pid));
-    st.occupants = []; renderRoom(id); renderPeople();
+    const id=p_roomId.value, st=ensureRoom(id);
+    st.occupants.forEach(pid=>state.assigned.delete(pid));
+    st.occupants=[]; renderRoom(id); renderPeople();
     setStatus(`방 배정 전부 해제: ${id}`);
   });
   p_type.addEventListener('change', ()=>{
-    const v = p_type.value;
-    const cap = v==="1인실"?1:v==="2인실"?2:v==="3인실"?3:v==="4인실"?4:v==="6인실"?6:1;
-    p_capacity.value = cap;
+    const v=p_type.value;
+    const cap=v==="1인실"?1:v==="2인실"?2:v==="3인실"?3:v==="4인실"?4:v==="6인실"?6:1;
+    p_capacity.value=cap;
   });
 
   function ensureRoom(id){
-    if(!state.roomState.has(id)) state.roomState.set(id, {capacity:1, gender:"", type:"", occupants:[]});
+    if(!state.roomState.has(id)) state.roomState.set(id,{capacity:1,gender:"",type:"",occupants:[]});
     return state.roomState.get(id);
   }
   const getPerson = (pid)=> state.people.find(x=>x.사번===pid);
@@ -194,40 +191,54 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     return { x:r.left-h.left+svgHost.scrollLeft, y:r.top-h.top+svgHost.scrollTop, w:r.width, h:r.height };
   }
 
-  // — 가시화 복구: 방 도형은 항상 투명(fill:none), 윤곽선만 —
+  // ===== 핵심: 방 도형의 fill을 완전히 제거(속성/스타일/상속 모두) =====
+  function forceTransparentRooms(svg){
+    // 1) 우선순위 높은 CSS 규칙 주입 (상속/클래스/인라인까지 덮어씀)
+    const style = document.createElement('style');
+    style.textContent = `
+      /* bg는 그대로, 그 외 도형은 투명 */
+      [id]:not([id^="bg"]):not([id^="BG"]) rect,
+      [id]:not([id^="bg"]):not([id^="BG"]) path,
+      [id]:not([id^="bg"]):not([id^="BG"]) polygon,
+      [id]:not([id^="bg"]):not([id^="BG"]) polyline,
+      [id]:not([id^="bg"]):not([id^="BG"]) circle,
+      [id]:not([id^="bg"]):not([id^="BG"]) ellipse,
+      [id]:not([id^="bg"]):not([id^="BG"]) line {
+        fill: none !important;
+        fill-opacity: 0 !important;
+      }
+    `;
+    svg.appendChild(style);
+
+    // 2) 각 도형에 직접 속성도 세팅(브라우저별 안전장치)
+    const SHAPES=['rect','path','polygon','polyline','circle','ellipse','line'];
+    svg.querySelectorAll('[id]').forEach(el=>{
+      if ((el.id||'').toLowerCase().startsWith('bg')) return; // 배경 제외
+      if (SHAPES.includes(el.tagName.toLowerCase())){
+        // 인라인 style의 fill 제거
+        const st=el.getAttribute('style')||'';
+        if (/fill\s*:/i.test(st)) el.setAttribute('style', st.replace(/fill\s*:\s*[^;]+;?/ig,''));
+        el.setAttribute('fill','none');
+        el.setAttribute('fill-opacity','0');
+        if (!el.getAttribute('stroke')) el.setAttribute('stroke','#6b7280');
+        if (!el.getAttribute('stroke-width')) el.setAttribute('stroke-width','1');
+      }
+    });
+  }
+
   function normalizeSvgAppearance(svg){
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
 
-    const SHAPES = ['rect','path','polygon','polyline','circle','ellipse','line'];
-    svg.querySelectorAll('*').forEach(el=>{
-      const tag = el.tagName.toLowerCase();
-      // 숨김/투명 해제
-      if (el.getAttribute('display')==='none') el.removeAttribute('display');
-      if (el.getAttribute('visibility')==='hidden') el.removeAttribute('visibility');
-      if (parseFloat(el.getAttribute('opacity'))===0) el.removeAttribute('opacity');
-      const st = el.getAttribute('style')||'';
-      el.setAttribute('style', st
-        .replace(/display\s*:\s*none;?/ig,'')
-        .replace(/visibility\s*:\s*hidden;?/ig,'')
-        .replace(/opacity\s*:\s*0(\.0+)?;?/ig,''));
-
-      // 클리핑/마스크 제거(도면이 사라지는 현상 방지)
-      if (el.hasAttribute('clip-path')) el.removeAttribute('clip-path');
-      if (el.hasAttribute('mask')) el.removeAttribute('mask');
-
-      // 텍스트는 검정, 배경은 그대로, “방 도형”은 투명 + 윤곽선만
-      if (tag==='text'){ el.setAttribute('fill','#111827'); }
-      if (SHAPES.includes(tag)){
-        // bg로 시작하지 않는 id = 드롭 가능한 방 후보 → 투명
-        const id = (el.id||'').toLowerCase();
-        if (!id.startsWith('bg')) {
-          el.setAttribute('fill','none');           // <<<<<< 핵심: 내부 채움 제거
-          el.setAttribute('stroke', '#6b7280');     // 윤곽선
-          el.setAttribute('stroke-width','1');
-        }
-      }
+    // 텍스트는 보이게
+    svg.querySelectorAll('text').forEach(t=>{
+      if (!t.getAttribute('fill')) t.setAttribute('fill','#111827');
+      const st=t.getAttribute('style')||'';
+      if (/fill\s*:\s*transparent/i.test(st)) t.setAttribute('style', st.replace(/fill\s*:\s*transparent;?/ig,'fill:#111827;'));
     });
+
+    // 방 채움 완전 제거
+    forceTransparentRooms(svg);
   }
 
   function layoutChips(roomId){
@@ -239,7 +250,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       const chip=document.createElement('div');
       chip.className='occChip '+(p.성별==="남자"?"male":"female");
       chip.dataset.room=roomId; chip.dataset.pid=pid; chip.draggable=true;
-      chip.textContent=`${p.부서} ${p.성명}${p.성별==="남자"?" (남)":" (여)"}`;
+      chip.textContent=`${p.부서} ${p.성명}`;  /* ← (남)/(여) 제거 */
       const c=i%cols, r=Math.floor(i/cols);
       chip.style.left=`${box.x + pad + c * Math.max(90, (box.w - pad*2)/cols)}px`;
       chip.style.top =`${box.y + pad + r * 22}px`;
@@ -296,7 +307,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svgHost.innerHTML=""; svgHost.appendChild(svg); state.svgEl=svg;
 
-    // 가시화: 방 투명, 윤곽선만 / bg는 원본 유지
+    // 가시화 정리: 방은 투명(검은 박스 방지), 텍스트는 보이게
     normalizeSvgAppearance(svg);
 
     attachRoomHandlers();
@@ -311,7 +322,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       const id=node.id||""; const tag=node.tagName.toLowerCase();
       const isShape=['rect','path','polygon','polyline','circle','ellipse','line'].includes(tag);
       if(!isShape) return;
-      if(id.toLowerCase().startsWith('bg')) return; // 배경은 보이되 드롭 금지
+      if(id.toLowerCase().startsWith('bg')) return; // 배경은 드롭 금지
       zones++;
       node.style.cursor='pointer';
       node.addEventListener('mouseenter', ()=> node.classList.add('room-hover'));
@@ -323,7 +334,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
         const prev=e.dataTransfer.getData('text/roomId')||null; if(!json||!pid) return;
         const p=JSON.parse(json); const st=ensureRoom(id);
 
-        // 성별/정원/타입 간단 체크
+        // 간단 검증(필요시 더 추가)
         if (st.gender && st.gender!==p.성별){ alert(`성별 제한: ${st.gender} 방입니다.`); return; }
         if (st.capacity && st.occupants.length >= st.capacity){ alert(`정원 초과 (정원: ${st.capacity})`); return; }
 
@@ -333,14 +344,11 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
         setStatus(`배정: ${p.성명} → ${id}`);
       });
 
-      // 클릭 → 방 설정 패널
+      // 클릭 → 방 설정
       node.addEventListener('click', ()=>{
         const st=ensureRoom(id);
-        p_roomId.value = id;
-        p_type.value   = st.type || "";
-        p_capacity.value = st.capacity || 1;
-        p_gender.value = st.gender || "";
-        document.getElementById('panelTitle').textContent = `방 설정 (${id})`;
+        p_roomId.value=id; p_type.value=st.type||""; p_capacity.value=st.capacity||1; p_gender.value=st.gender||"";
+        document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
         panel.classList.add('show');
       });
     });
@@ -377,8 +385,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   });
   fixBtn.addEventListener('click', ()=>{
     if(!state.svgEl){ alert('먼저 SVG를 업로드하세요'); return; }
-    normalizeSvgAppearance(state.svgEl);
-    setStatus('도면 표시 복구(윤곽선만) 적용');
+    normalizeSvgAppearance(state.svgEl); // 내부에서 forceTransparentRooms 호출
+    setStatus('도면 표시 복구 적용(윤곽/투명)');
   });
   searchInp.addEventListener('input', ()=>{ state.search=searchInp.value||""; renderPeople(); });
 
