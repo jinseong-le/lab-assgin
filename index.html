@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.22 (All-in-one)</title>
+<title>연구실 배정 v1.23 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -18,7 +18,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
 .statusbar{ border:1px dashed #e5e7eb; background:#fafafa; padding:6px 10px; border-radius:8px; margin-bottom:8px; font-size:12px; color:#555; }
 
-.layout{ display:grid; grid-template-columns: 1fr 420px; gap:16px; }
+.layout{ display:grid; grid-template-columns: 1fr 440px; gap:16px; }
 .canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
 
 /* 바둑판 배경 */
@@ -39,8 +39,9 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 /* 오른쪽 패널 */
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
 .controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-#deptFilter, #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+#deptFilter, #genderFilter, #search{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
 #deptFilter{ min-width:160px; }
+#genderFilter{ min-width:120px; }
 #search{ width:200px; }
 .people{ min-height:200px; border:2px dashed #e6e6e6; border-radius:10px; padding:8px; }
 .people.scrollable{ max-height:60vh; overflow:auto; }
@@ -77,28 +78,38 @@ body.dragging{ user-select:none; cursor:grabbing; }
 .roomLabel.gray{   background:#6b7280; } /* 기타 */
 
 .room-hover{ outline:2px solid var(--primary); outline-offset:2px; }
+
+/* 방 설정 패널 */
+.panel{ position:fixed; right:16px; top:96px; width:340px; border:1px solid var(--line); background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.08); padding:12px; display:none; }
+.panel.show{ display:block; }
+.panel h4{ margin:0 0 8px; }
+.row{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+.row label{ width:84px; font-size:13px; color:#444; }
+.row input, .row select{ flex:1; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+.panel .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
 </style>
 </head>
 <body>
   <header class="toolbar">
     <div class="group">
       <label class="btn">SVG 업로드<input type="file" id="svgInput" accept=".svg" hidden/></label>
+      <label class="btn">약어 업로드<input type="file" id="abbrInput" accept=".xlsx,.xlsm,.xls" hidden/></label>
       <label class="btn">교원 엑셀 업로드<input type="file" id="xlInput" accept=".xlsx,.xlsm,.xls" hidden/></label>
       <button id="resetBtn" class="btn">초기화</button>
       <button id="fixBtn" class="btn">도면 표시 복구</button>
     </div>
     <div class="group">
       <span class="hint">bg 제외 id 요소 드롭가능</span>
-      <span class="version">v1.22</span>
+      <span class="version">v1.23</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.22 | 대기 중… SVG/교원 엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.23 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
       <div id="svgHost" class="svgHost">
-        <div class="placeholder">왼쪽의 <b>SVG</b>와 <b>교원 엑셀</b>을 업로드하세요</div>
+        <div class="placeholder">왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요</div>
       </div>
     </section>
 
@@ -106,8 +117,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
       <h3>교수 목록</h3>
       <div class="hint">정렬: 직위 → 호봉(내림) → 승급일 → 생년월일</div>
       <div class="controls">
-        <select id="deptFilter">
-          <option value="">전체 진료과</option>
+        <select id="deptFilter"><option value="">전체 진료과</option></select>
+        <select id="genderFilter">
+          <option value="">전체 성별</option>
+          <option value="남자">남자</option>
+          <option value="여자">여자</option>
         </select>
         <input id="search" type="text" placeholder="교수 이름 검색"/>
       </div>
@@ -116,15 +130,43 @@ body.dragging{ user-select:none; cursor:grabbing; }
     </aside>
   </main>
 
+  <!-- 방 설정 패널 -->
+  <div id="roomPanel" class="panel">
+    <h4 id="panelTitle">방 설정</h4>
+    <div class="row"><label>방 ID</label><input id="p_roomId" disabled></div>
+    <div class="row">
+      <label>방 타입</label>
+      <select id="p_type">
+        <option value="">(자유)</option>
+        <option>1인실</option><option>2인실</option><option>3인실</option>
+        <option>4인실</option><option>6인실</option>
+      </select>
+    </div>
+    <div class="row"><label>정원</label><input id="p_capacity" type="number" min="1" value="1"></div>
+    <div class="row">
+      <label>성별 제한</label>
+      <select id="p_gender">
+        <option value="">무관</option>
+        <option value="남자">남자</option>
+        <option value="여자">여자</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button id="clearRoom" class="btn">배정 전부 해제</button>
+      <button id="closePanel" class="btn">닫기</button>
+      <button id="applyPanel" class="btn" style="background:#409eff;color:#fff;border-color:#409eff">적용</button>
+    </div>
+  </div>
+
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.22 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.23 | ' + m;
 
   const state = {
     people:[], assigned:new Map(), roomState:new Map(), svgEl:null,
-    search:"", deptFilter:"", labels:new Map(),
-    processedTokens: new Set(), currentDragToken: null
+    search:"", deptFilter:"", genderFilter:"", labels:new Map(),
+    deptAbbr:new Map(), activeDragToken:null
   };
 
   const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
@@ -134,40 +176,51 @@ body.dragging{ user-select:none; cursor:grabbing; }
   const svgHost   = document.getElementById('svgHost');
   const peopleBox = document.getElementById('people');
   const svgInput  = document.getElementById('svgInput');
+  const abbrInput = document.getElementById('abbrInput');
   const xlInput   = document.getElementById('xlInput');
   const resetBtn  = document.getElementById('resetBtn');
   const fixBtn    = document.getElementById('fixBtn');
   const searchInp = document.getElementById('search');
   const deptFilter= document.getElementById('deptFilter');
+  const genderFilter= document.getElementById('genderFilter');
 
-  /* ===== 진료과 약어: 내장 매핑 + 폴백 규칙 ===== */
-  const DEPT_ABBR = {
-    "마취통증의학과":"AN","진단검사의학과":"LAB","내과":"IM","외과":"GS","정형외과":"OS",
-    "소아청소년과":"PD","신경과":"NR","신경외과":"NS","산부인과":"OBGYN","안과":"OPH",
-    "이비인후과":"ENT","피부과":"DERM","비뇨의학과":"URO","흉부외과":"TS","재활의학과":"RM",
-    "영상의학과":"RAD","정신건강의학과":"PSY","가정의학과":"FM","응급의학과":"EM",
-    "치과":"DEN","병리과":"PATH","핵의학과":"NM","종양내과":"ONC","심장내과":"CARD",
-    "감염내과":"ID","내분비내과":"ENDO","신장내과":"NEPH","소화기내과":"GI","호흡기내과":"PULM"
-  };
-  const abbrDept = (name) => {
-    if (!name) return "";
-    if (DEPT_ABBR[name]) return DEPT_ABBR[name];
-    if (/[A-Za-z]/.test(name)) {
-      const initials = name.match(/\b([A-Za-z])/g);
-      if (initials && initials.length>0) return initials.slice(0,3).join('').toUpperCase();
-      return name.slice(0,3).toUpperCase();
+  /* ===== 약어 로더: 업로드 파일만 사용(없으면 부서명 그대로) ===== */
+  async function loadAbbrExcel(file){
+    setStatus(`약어 엑셀: ${file.name} 로딩중`);
+    const buf=await file.arrayBuffer();
+    let wb; try{ wb=XLSX.read(new Uint8Array(buf),{type:'array'});}catch(e){ alert('약어 엑셀 파싱 실패'); return; }
+    const name=wb.SheetNames[0];
+    const sheet=wb.Sheets[name];
+    const rowsObj=XLSX.utils.sheet_to_json(sheet,{defval:""});
+    state.deptAbbr.clear();
+    if(rowsObj.length){
+      const keys=Object.keys(rowsObj[0]);
+      const kDept = keys.find(k=>/진료과|부서|department|과/i.test(k)) || keys[0];
+      const kAbbr = keys.find(k=>/약어|abbr|영문|코드/i.test(k)) || keys[1];
+      rowsObj.forEach(r=>{
+        const full=(r[kDept]||"").toString().trim();
+        const abbr=(r[kAbbr]||"").toString().trim();
+        if(full && abbr) state.deptAbbr.set(full, abbr);
+      });
+    } else {
+      const rowsArr=XLSX.utils.sheet_to_json(sheet,{header:1,defval:""});
+      for(let i=1;i<rowsArr.length;i++){
+        const full=(rowsArr[i][0]||"").toString().trim();
+        const abbr=(rowsArr[i][1]||"").toString().trim();
+        if(full && abbr) state.deptAbbr.set(full, abbr);
+      }
     }
-    const cleaned = name.replace(/(의학과|학교|센터|연구소|과)$/,'');
-    return cleaned.slice(0,2);
-  };
+    setStatus(`약어 ${state.deptAbbr.size}건 로드`);
+    renderPeople();
+    // 칩 텍스트도 갱신
+    state.roomState.forEach((_, id)=> renderRoom(id));
+  }
+  const abbrDept = (name)=> state.deptAbbr.get(name) || name || "";
 
-  /* ===== 예상 배정 방(규칙) ===== */
+  /* ===== 예상 배정 방(규칙 표시) ===== */
   function expectedRoom(p){
-    // 부서 우선 규칙
     if (p.부서==="마취통증의학과" || p.부서==="진단검사의학과") return "과내";
-    // 직계 규칙
     if (String(p.직계||"").startsWith("진료")) return "불가";
-    // 직위 규칙
     if (p.직위==="교수") return "1인실";
     if (p.직위==="부교수" || p.직위==="조교수") return "2인실";
     if (String(p.직위||"").startsWith("임상")) return "3~4인실";
@@ -246,7 +299,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
       chip.addEventListener('dragstart', e=>{
         document.body.classList.add('dragging'); chip.style.zIndex=9999;
         const token = Date.now()+"-"+Math.random().toString(36).slice(2);
-        state.currentDragToken = token;
+        state.activeDragToken = token;
         e.dataTransfer.effectAllowed='move';
         e.dataTransfer.setData('application/json', JSON.stringify(p));
         e.dataTransfer.setData('text/pid', p.사번);
@@ -267,6 +320,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     const list=state.people
       .filter(p=>!state.assigned.has(p.사번))
       .filter(p=>!state.deptFilter || p.부서===state.deptFilter)
+      .filter(p=>!state.genderFilter || p.성별===state.genderFilter)
       .filter(p=>!re||re.test(p.성명))
       .sort(sortPeople);
 
@@ -281,7 +335,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
       card.addEventListener('dragstart', e=>{
         document.body.classList.add('dragging');
         const token = Date.now()+"-"+Math.random().toString(36).slice(2);
-        state.currentDragToken = token;
+        state.activeDragToken = token;
         e.dataTransfer.effectAllowed='move';
         e.dataTransfer.setData('application/json', JSON.stringify(p));
         e.dataTransfer.setData('text/pid', p.사번);
@@ -299,9 +353,9 @@ body.dragging{ user-select:none; cursor:grabbing; }
   peopleBox.addEventListener('dragleave', ()=> peopleBox.classList.remove('drop-hover'));
   peopleBox.addEventListener('drop', e=>{
     e.preventDefault(); e.stopPropagation(); peopleBox.classList.remove('drop-hover');
-    const token = e.dataTransfer.getData('text/dragToken');
-    if (token && state.processedTokens.has(token)) return;
-    if (token) state.processedTokens.add(token);
+    const token=e.dataTransfer.getData('text/dragToken');
+    if (!token || token!==state.activeDragToken) return;
+    state.activeDragToken = null;
 
     const pid=e.dataTransfer.getData('text/pid'); const prev=e.dataTransfer.getData('text/roomId')||null;
     if(!pid||!prev) return;
@@ -311,7 +365,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     setStatus(`배정 취소: ${pid}`);
   });
 
-  /* ===== 좌표 기반 타깃팅 & 드롭 단일 리스너(svgHost) ===== */
+  /* ===== 좌표 기반 타깃팅 ===== */
   function targetRoomFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
     if (!el) return null;
@@ -328,6 +382,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     return node;
   }
 
+  /* ===== 드롭: svgHost 하나에서만 처리 (중복 방지) ===== */
   function attachRoomHandlers(){
     const svg=state.svgEl; if(!svg) return;
 
@@ -339,7 +394,6 @@ body.dragging{ user-select:none; cursor:grabbing; }
       node.classList.add('room-hover');
     });
 
-    // svgHost 하나만 드롭 처리(중복 제거)
     svgHost.addEventListener('dragover', (e)=>{
       const node = targetRoomFromPoint(e.clientX, e.clientY);
       if (!node) return;
@@ -348,11 +402,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
 
     svgHost.addEventListener('drop', (e)=>{
       const token = e.dataTransfer.getData('text/dragToken');
-      if (token && state.processedTokens.has(token)) { e.preventDefault(); e.stopPropagation(); return; }
-      if (token) state.processedTokens.add(token);
+      if (!token || token !== state.activeDragToken){ e.preventDefault(); e.stopPropagation(); return; }
+      state.activeDragToken = null;
 
       const node = targetRoomFromPoint(e.clientX, e.clientY);
-      if (!node) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!node){ e.preventDefault(); e.stopPropagation(); return; }
       const roomId=node.id;
       e.preventDefault(); e.stopPropagation();
 
@@ -364,10 +418,9 @@ body.dragging{ user-select:none; cursor:grabbing; }
       const p=JSON.parse(json);
       const st=ensureRoom(roomId);
 
-      // 같은 방이면 무시
       if (state.assigned.get(pid) === roomId) { setStatus(`${p.성명}: 이미 ${roomId}에 배정됨`); return; }
 
-      // 이전 방에서 제거(있다면)
+      // 이전 방에서 제거
       if (prev && state.assigned.get(pid)===prev){
         const os=ensureRoom(prev);
         os.occupants=os.occupants.filter(x=>x!==pid);
@@ -379,9 +432,9 @@ body.dragging{ user-select:none; cursor:grabbing; }
         renderRoom(old);
       }
 
-      // 성별/정원 체크
+      // 제한 체크
       if (st.gender){
-        const gender = (JSON.parse(json).성별||"");
+        const gender = p.성별||"";
         if (gender && st.gender!==gender){ alert(`성별 제한: ${st.gender} 방`); return; }
       }
       if (st.capacity && st.occupants.length >= st.capacity){
@@ -389,6 +442,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
         return;
       }
 
+      // 새 방에 배정
       st.occupants.push(pid);
       state.assigned.set(pid, roomId);
       renderRoom(roomId);
@@ -396,10 +450,43 @@ body.dragging{ user-select:none; cursor:grabbing; }
       setStatus(`배정: ${p.성명} → ${roomId}`);
     });
 
+    // 방 클릭 → 설정 패널
+    svg.addEventListener('click', (e)=>{
+      const node = targetRoomFromPoint(e.clientX, e.clientY) || e.target.closest('[id]');
+      if (!node) return;
+      const id=node.id; if ((id||'').toLowerCase().startsWith('bg')) return;
+      const st=ensureRoom(id);
+      p_roomId.value=id; p_type.value=st.type||""; p_capacity.value=st.capacity||1; p_gender.value=st.gender||"";
+      document.getElementById('panelTitle').textContent=`방 설정 (${id})`;
+      panel.classList.add('show');
+    });
+
     // 라벨 위치 갱신
     svgHost.addEventListener('scroll', renderAllRoomLabels);
     window.addEventListener('resize', renderAllRoomLabels);
   }
+
+  // 패널 버튼
+  const panel=document.getElementById('roomPanel');
+  const p_roomId=document.getElementById('p_roomId');
+  const p_type=document.getElementById('p_type');
+  const p_capacity=document.getElementById('p_capacity');
+  const p_gender=document.getElementById('p_gender');
+  document.getElementById('closePanel').onclick = ()=> panel.classList.remove('show');
+  document.getElementById('applyPanel').onclick = ()=>{
+    const id=p_roomId.value, st=ensureRoom(id);
+    st.type=p_type.value;
+    st.capacity=Math.max(1,parseInt(p_capacity.value||"1",10));
+    st.gender=p_gender.value;
+    renderRoomLabel(id);
+    setStatus(`방 설정 적용: ${id}`);
+  };
+  document.getElementById('clearRoom').onclick = ()=>{
+    const id=p_roomId.value, st=ensureRoom(id);
+    st.occupants.forEach(pid=>state.assigned.delete(pid));
+    st.occupants=[]; renderRoom(id); renderPeople();
+    setStatus(`배정 전부 해제: ${id}`);
+  };
 
   // SVG 로드
   async function loadSvgFromFile(file){
@@ -414,7 +501,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     normalizeSvgAppearance(svg);
     attachRoomHandlers();
 
-    // 모든 id에 라벨 생성
+    // 모든 id에 라벨 엔트리 생성
     [...svg.querySelectorAll('[id]')].forEach(n=>{
       const id=(n.id||'').toLowerCase();
       if (!id || id.startsWith('bg')) return;
@@ -422,6 +509,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
     });
     setStatus('SVG 로드 완료');
   }
+
+  // 약어 엑셀 로드
+  abbrInput.addEventListener('change', e=>{
+    const f=e.target.files?.[0]; if(!f){ setStatus('약어 선택 취소'); return; } loadAbbrExcel(f);
+  });
 
   // 교원 엑셀 로드
   async function loadExcelFromFile(file){
@@ -436,7 +528,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
       직계:r["직계(직종)"]||"", 직위:r["직위"]||"", 성별:r["성별"]||"",
       승급일:r["승급일"]||"", 생년월일:r["생년월일"]||"", 호봉:r["호봉"]||""
     }))
-    // 진료 직계는 배정대상 제외(리스트에 안 보이게). 예외적으로 보고 싶으면 이 줄 주석처리 가능.
+    // 직계 '진료'는 배정 대상 제외(목록에서 숨김). 필요시 이 줄 주석 처리.
     .filter(p=>!String(p.직계).startsWith("진료"))
     .filter(p=>Object.keys(TITLE_ORDER).includes(p.직위));
 
@@ -456,8 +548,8 @@ body.dragging{ user-select:none; cursor:grabbing; }
   xlInput .addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('교원 엑셀 선택 취소'); return; } loadExcelFromFile(f); });
   resetBtn.addEventListener('click', ()=>{
     state.people=[]; state.assigned.clear(); state.roomState.clear(); state.labels.clear();
-    state.processedTokens.clear(); state.currentDragToken=null;
-    peopleBox.innerHTML=""; svgHost.innerHTML='<div class="placeholder">왼쪽의 <b>SVG</b>와 <b>교원 엑셀</b>을 업로드하세요</div>';
+    state.deptAbbr.clear(); state.activeDragToken=null;
+    peopleBox.innerHTML=""; svgHost.innerHTML='<div class="placeholder">왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요</div>';
     setStatus('초기화 완료');
   });
   fixBtn.addEventListener('click', ()=>{
@@ -468,9 +560,10 @@ body.dragging{ user-select:none; cursor:grabbing; }
   });
   searchInp.addEventListener('input', ()=>{ state.search=searchInp.value||""; renderPeople(); });
   deptFilter.addEventListener('change', ()=>{ state.deptFilter=deptFilter.value||""; renderPeople(); });
+  genderFilter.addEventListener('change', ()=>{ state.genderFilter=genderFilter.value||""; renderPeople(); });
 
   // 초기
-  setStatus('대기 중… SVG/교원 엑셀을 업로드하세요');
+  setStatus('대기 중… SVG/약어/교원 엑셀을 업로드하세요');
   renderPeople();
 })();
 </script>
