@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.24 (All-in-one)</title>
+<title>연구실 배정 v1.25 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -32,7 +32,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .svgHost svg{ width:100%; height:auto; display:block; }
 .placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
 
-[id^="bg"], [id^="BG"]{ pointer-events:none; } /* 배경 그룹은 드롭 금지 */
+/* 배경 그룹은 드롭 금지 */
+[id^="bg"], [id^="BG"]{ pointer-events:none; }
 
 /* 오른쪽 패널 */
 .side{ border:1px solid var(--line); border-radius:10px; padding:12px; min-height:560px; display:flex; flex-direction:column; gap:8px; }
@@ -57,8 +58,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 }
 .occChip.male{ border-color:#7aa; background:#eef6ff; }
 .occChip.female{ border-color:#a77; background:#ffeef0; }
-body.dragging .occChip{ pointer-events:none !important; } /* 드래깅 중에는 밑의 방 선택 가능 */
-body.dragging{ user-select:none; cursor:grabbing; }
+
+body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 pointer-events: none 을 전역으로 쓰지 않음 */
 
 /* 방 라벨 */
 .roomLabel{
@@ -94,11 +95,11 @@ body.dragging{ user-select:none; cursor:grabbing; }
     </div>
     <div class="group">
       <span class="hint">bg 제외 id 요소 드롭가능</span>
-      <span class="version">v1.24</span>
+      <span class="version">v1.25</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.24 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.25 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -155,14 +156,14 @@ body.dragging{ user-select:none; cursor:grabbing; }
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.24 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.25 | ' + m;
 
   const state = {
     people:[], assigned:new Map(), roomState:new Map(), svgEl:null,
     search:"", deptFilter:"", genderFilter:"", labels:new Map(),
     deptAbbr:new Map()
   };
-  let processingDrop = false; // ✅ 드롭 1회 처리 가드
+  let processingDrop = false; // 드롭 1회 처리 가드
 
   const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
   const toInt = s => { const n=parseInt(String(s||"").split(".")[0],10); return isNaN(n)?-999999:n; };
@@ -178,6 +179,18 @@ body.dragging{ user-select:none; cursor:grabbing; }
   const searchInp = document.getElementById('search');
   const deptFilter= document.getElementById('deptFilter');
   const genderFilter= document.getElementById('genderFilter');
+
+  /* ===== 전역 드래그 세이프가드: 어떤 상황에서도 드래그 상태 해제 ===== */
+  function endDragGlobally(){
+    document.body.classList.remove('dragging');
+    processingDrop = false;
+    // 칩 pointer-events 복구
+    document.querySelectorAll('.occChip').forEach(el=> el.style.pointerEvents='auto');
+  }
+  ['dragend','drop','mouseup','mouseleave'].forEach(ev=>{
+    window.addEventListener(ev, endDragGlobally, true);
+  });
+  window.addEventListener('keydown', e=>{ if(e.key==='Escape') endDragGlobally(); }, true);
 
   /* ===== 약어 로더: 업로드 파일만 사용(없으면 부서명 그대로) ===== */
   async function loadAbbrExcel(file){
@@ -282,8 +295,9 @@ body.dragging{ user-select:none; cursor:grabbing; }
       chip.style.top =`${box.y + pad + r * 26}px`;
 
       chip.addEventListener('dragstart', e=>{
-        document.body.classList.add('dragging'); chip.style.zIndex=9999;
-        // 고스트 이미지 작게
+        document.body.classList.add('dragging');
+        // 칩이 방을 가리지 않도록, 그리고 포인터 락 방지
+        chip.style.pointerEvents='none';
         const ghost=document.createElement('canvas'); ghost.width=1; ghost.height=1; e.dataTransfer.setDragImage(ghost,0,0);
         e.dataTransfer.effectAllowed='move';
         e.dataTransfer.setData('application/json', JSON.stringify(p));
@@ -291,14 +305,24 @@ body.dragging{ user-select:none; cursor:grabbing; }
         e.dataTransfer.setData('text/from','room');
         e.dataTransfer.setData('text/roomId', roomId);
         e.dataTransfer.setData('text/plain','drag');
+        // 혹시 dragend가 안 올 때를 대비한 타임아웃 세이프가드
+        setTimeout(()=>{ if(document.body.classList.contains('dragging')) endDragGlobally(); }, 4000);
       });
-      chip.addEventListener('dragend', ()=>{ document.body.classList.remove('dragging'); chip.style.zIndex=1; });
+      chip.addEventListener('dragend', ()=>{ chip.style.pointerEvents='auto'; endDragGlobally(); });
       svgHost.appendChild(chip);
     });
   }
   const renderRoom = (id)=> { layoutChips(id); renderRoomLabel(id); };
 
   /* ===== 우측 목록 렌더 ===== */
+  function expectedRoom(p){
+    if (p.부서==="마취통증의학과" || p.부서==="진단검사의학과") return "과내";
+    if (String(p.직계||"").startsWith("진료")) return "불가";
+    if (p.직위==="교수") return "1인실";
+    if (p.직위==="부교수" || p.직위==="조교수") return "2인실";
+    if (String(p.직위||"").startsWith("임상")) return "3~4인실";
+    return "3~6인실";
+  }
   function renderPeople(){
     const kw=(state.search||"").trim(); const re=kw?new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')):null;
     const list=state.people
@@ -324,8 +348,9 @@ body.dragging{ user-select:none; cursor:grabbing; }
         e.dataTransfer.setData('text/pid', p.사번);
         e.dataTransfer.setData('text/from','list');
         e.dataTransfer.setData('text/plain','drag');
+        setTimeout(()=>{ if(document.body.classList.contains('dragging')) endDragGlobally(); }, 4000);
       });
-      card.addEventListener('dragend', ()=> document.body.classList.remove('dragging'));
+      card.addEventListener('dragend', endDragGlobally);
       peopleBox.appendChild(card);
     });
   }
@@ -343,7 +368,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
       state.assigned.delete(pid);
       renderRoom(prev); renderPeople();
       setStatus(`배정 취소: ${pid}`);
-    } finally { processingDrop = false; }
+    } finally { processingDrop = false; endDragGlobally(); }
   });
 
   /* ===== 좌표 기반 타깃팅 ===== */
@@ -363,7 +388,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     return node;
   }
 
-  /* ===== 드롭: svgHost 하나에서만 처리 (중복 방지) ===== */
+  /* ===== 드롭: svgHost 하나에서만 처리 ===== */
   function attachRoomHandlers(){
     const svg=state.svgEl; if(!svg) return;
 
@@ -427,7 +452,8 @@ body.dragging{ user-select:none; cursor:grabbing; }
         renderPeople();
         setStatus(`배정: ${p.성명} → ${roomId}`);
       } finally {
-        processingDrop = false; // ✅ 성공/실패 무조건 해제
+        processingDrop = false;
+        endDragGlobally();
       }
     });
 
@@ -459,8 +485,7 @@ body.dragging{ user-select:none; cursor:grabbing; }
     st.type=p_type.value;
     st.capacity=Math.max(1,parseInt(p_capacity.value||"1",10));
     st.gender=p_gender.value;
-    renderRoomLabel(id); // ✅ 텍스트/색 갱신
-    positionRoomLabel(id);
+    renderRoomLabel(id); positionRoomLabel(id); // 라벨 즉시 갱신
     setStatus(`방 설정 적용: ${id}`);
   };
   document.getElementById('clearRoom').onclick = ()=>{
