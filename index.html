@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.25 (All-in-one)</title>
+<title>연구실 배정 v1.26 (All-in-one)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -21,7 +21,9 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .layout{ display:grid; grid-template-columns: 1fr 440px; gap:16px; }
 .canvasWrap{ border:1px solid var(--line); border-radius:10px; padding:10px; min-height:560px; }
 
-.svgHost{ position:relative; min-height:500px; overflow:auto;
+/* ===== 왼쪽 캔버스: SVG + 오버레이 ===== */
+.svgHost{
+  position:relative; min-height:500px; overflow:auto;
   background:
     linear-gradient(45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
     linear-gradient(-45deg, #f6f7f9 25%, transparent 25%) -8px 0/16px 16px,
@@ -29,7 +31,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     linear-gradient(-45deg, transparent 75%, #f6f7f9 75%) -8px 0/16px 16px;
   background-color:#fff;
 }
-.svgHost svg{ width:100%; height:auto; display:block; }
+#svgLayer{ position:relative; z-index:0; }
+#overlay{ position:absolute; left:0; top:0; width:100%; height:100%; z-index:10; pointer-events:none; }
 .placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
 
 /* 배경 그룹은 드롭 금지 */
@@ -50,22 +53,20 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .badge{ display:inline-block; padding:2px 6px; border-radius:10px; background:#eef; margin-left:6px; font-size:12px; }
 .badge.room{ background:#e8f5e9; border:1px solid #c8e6c9; }
 
-/* 칩(방 안 배정 표시) */
+/* ===== 칩/라벨은 모두 overlay에 위치 ===== */
 .occChip{
-  position:absolute; font-size:11px; line-height:1.15; z-index:1;
+  position:absolute; font-size:11px; line-height:1.15;
   padding:4px 6px; border-radius:8px; background:#fafafa; border:1px solid #ccc;
-  pointer-events:auto; cursor:grab; white-space:pre-line; min-width:56px; text-align:center;
+  cursor:grab; white-space:pre-line; min-width:56px; text-align:center;
+  pointer-events:auto; z-index:11;
 }
 .occChip.male{ border-color:#7aa; background:#eef6ff; }
 .occChip.female{ border-color:#a77; background:#ffeef0; }
 
-body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 pointer-events: none 을 전역으로 쓰지 않음 */
-
-/* 방 라벨 */
 .roomLabel{
   position:absolute; font-size:11px; font-weight:700; color:#fff; padding:2px 6px;
-  border-radius:999px; transform:translate(-50%,-100%); pointer-events:none; white-space:nowrap;
-  border:1px solid rgba(0,0,0,.1);
+  border-radius:999px; transform:translate(-50%,-100%); white-space:nowrap;
+  border:1px solid rgba(0,0,0,.1); pointer-events:none; z-index:12;
 }
 .roomLabel.violet{ background:#7c3aed; } /* 1인실 */
 .roomLabel.blue{   background:#3b82f6; } /* 남 */
@@ -95,16 +96,18 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     </div>
     <div class="group">
       <span class="hint">bg 제외 id 요소 드롭가능</span>
-      <span class="version">v1.25</span>
+      <span class="version">v1.26</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.25 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.26 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
       <div id="svgHost" class="svgHost">
         <div class="placeholder">왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요</div>
+        <div id="svgLayer"></div>
+        <div id="overlay"></div>
       </div>
     </section>
 
@@ -156,7 +159,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.25 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.26 | ' + m;
 
   const state = {
     people:[], assigned:new Map(), roomState:new Map(), svgEl:null,
@@ -170,6 +173,8 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
   const sortPeople=(a,b)=>{ const t=(TITLE_ORDER[a.직위]||99)-(TITLE_ORDER[b.직위]||99); if(t) return t; const s=toInt(b.호봉)-toInt(a.호봉); if(s) return s; const p=String(a.승급일||"").localeCompare(String(b.승급일||"")); if(p) return p; return String(a.생년월일||"").localeCompare(String(b.생년월일||"")); };
 
   const svgHost   = document.getElementById('svgHost');
+  const svgLayer  = document.getElementById('svgLayer');
+  const overlay   = document.getElementById('overlay');
   const peopleBox = document.getElementById('people');
   const svgInput  = document.getElementById('svgInput');
   const abbrInput = document.getElementById('abbrInput');
@@ -180,19 +185,19 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
   const deptFilter= document.getElementById('deptFilter');
   const genderFilter= document.getElementById('genderFilter');
 
-  /* ===== 전역 드래그 세이프가드: 어떤 상황에서도 드래그 상태 해제 ===== */
+  /* ===== 전역 드래그 세이프가드 ===== */
   function endDragGlobally(){
     document.body.classList.remove('dragging');
     processingDrop = false;
-    // 칩 pointer-events 복구
-    document.querySelectorAll('.occChip').forEach(el=> el.style.pointerEvents='auto');
+    overlay.style.pointerEvents='auto';
+    overlay.querySelectorAll('.occChip').forEach(el=> el.style.pointerEvents='auto');
   }
   ['dragend','drop','mouseup','mouseleave'].forEach(ev=>{
     window.addEventListener(ev, endDragGlobally, true);
   });
   window.addEventListener('keydown', e=>{ if(e.key==='Escape') endDragGlobally(); }, true);
 
-  /* ===== 약어 로더: 업로드 파일만 사용(없으면 부서명 그대로) ===== */
+  /* ===== 약어 로더 ===== */
   async function loadAbbrExcel(file){
     setStatus(`약어 엑셀: ${file.name} 로딩중`);
     const buf=await file.arrayBuffer();
@@ -211,12 +216,11 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
       });
     }
     setStatus(`약어 ${state.deptAbbr.size}건 로드`);
-    renderPeople();
-    state.roomState.forEach((_, id)=> renderRoom(id)); // 칩 텍스트 갱신
+    renderPeople(); state.roomState.forEach((_, id)=> renderRoom(id));
   }
   const abbrDept = (name)=> state.deptAbbr.get(name) || name || "";
 
-  /* ===== 예상 배정 방(표시용) ===== */
+  /* ===== 표시용: 예상 배정 ===== */
   function expectedRoom(p){
     if (p.부서==="마취통증의학과" || p.부서==="진단검사의학과") return "과내";
     if (String(p.직계||"").startsWith("진료")) return "불가";
@@ -242,6 +246,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
     svg.querySelectorAll('text').forEach(t=>{ if (!t.getAttribute('fill')) t.setAttribute('fill','#111827'); });
+    svg.style.position='relative'; svg.style.zIndex=0; /* 항상 아래 */
   }
 
   /* ===== 방 라벨 ===== */
@@ -263,7 +268,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     let el = state.labels.get(roomId);
     if (!el){
       el=document.createElement('div'); el.className='roomLabel';
-      el.dataset.room=roomId; svgHost.appendChild(el); state.labels.set(roomId, el);
+      el.dataset.room=roomId; overlay.appendChild(el); state.labels.set(roomId, el);
     }
     el.textContent = txt || '';
     el.className = `roomLabel ${cls}`;
@@ -279,10 +284,10 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
   }
   function renderAllRoomLabels(){ state.labels.forEach((_, id)=> positionRoomLabel(id)); }
 
-  /* ===== 칩(점유 표시) ===== */
+  /* ===== 칩(점유 표시) - overlay에만 생성 ===== */
   function layoutChips(roomId){
     const st=ensureRoom(roomId), node=state.svgEl?.querySelector('#'+CSS.escape(roomId)); if(!node) return;
-    svgHost.querySelectorAll(`.occChip[data-room="${CSS.escape(roomId)}"]`).forEach(el=>el.remove());
+    overlay.querySelectorAll(`.occChip[data-room="${CSS.escape(roomId)}"]`).forEach(el=>el.remove());
     const box=nodeBBoxInHost(node), pad=4, cols=Math.max(1,Math.floor(box.w/80));
     st.occupants.forEach((pid,i)=>{
       const p=getPerson(pid); if(!p) return;
@@ -296,7 +301,8 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
 
       chip.addEventListener('dragstart', e=>{
         document.body.classList.add('dragging');
-        // 칩이 방을 가리지 않도록, 그리고 포인터 락 방지
+        // 칩이 드랍 타겟을 가리지 않게 overlay 전체를 투명 처리
+        overlay.style.pointerEvents='none';
         chip.style.pointerEvents='none';
         const ghost=document.createElement('canvas'); ghost.width=1; ghost.height=1; e.dataTransfer.setDragImage(ghost,0,0);
         e.dataTransfer.effectAllowed='move';
@@ -305,24 +311,16 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
         e.dataTransfer.setData('text/from','room');
         e.dataTransfer.setData('text/roomId', roomId);
         e.dataTransfer.setData('text/plain','drag');
-        // 혹시 dragend가 안 올 때를 대비한 타임아웃 세이프가드
+        // 안전장치
         setTimeout(()=>{ if(document.body.classList.contains('dragging')) endDragGlobally(); }, 4000);
       });
-      chip.addEventListener('dragend', ()=>{ chip.style.pointerEvents='auto'; endDragGlobally(); });
-      svgHost.appendChild(chip);
+      chip.addEventListener('dragend', ()=>{ endDragGlobally(); });
+      overlay.appendChild(chip);
     });
   }
   const renderRoom = (id)=> { layoutChips(id); renderRoomLabel(id); };
 
   /* ===== 우측 목록 렌더 ===== */
-  function expectedRoom(p){
-    if (p.부서==="마취통증의학과" || p.부서==="진단검사의학과") return "과내";
-    if (String(p.직계||"").startsWith("진료")) return "불가";
-    if (p.직위==="교수") return "1인실";
-    if (p.직위==="부교수" || p.직위==="조교수") return "2인실";
-    if (String(p.직위||"").startsWith("임상")) return "3~4인실";
-    return "3~6인실";
-  }
   function renderPeople(){
     const kw=(state.search||"").trim(); const re=kw?new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')):null;
     const list=state.people
@@ -343,6 +341,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
       card.addEventListener('dragstart', e=>{
         document.body.classList.add('dragging');
         const ghost=document.createElement('canvas'); ghost.width=1; ghost.height=1; e.dataTransfer.setDragImage(ghost,0,0);
+        overlay.style.pointerEvents='none';
         e.dataTransfer.effectAllowed='move';
         e.dataTransfer.setData('application/json', JSON.stringify(p));
         e.dataTransfer.setData('text/pid', p.사번);
@@ -375,13 +374,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
   function targetRoomFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
     if (!el) return null;
-    let node = el.closest ? el.closest('[id]') : null;
-    if ((!node || node === document.body) && el.classList && el.classList.contains('occChip')){
-      el.style.display='none';
-      const under = document.elementFromPoint(clientX, clientY);
-      node = under && under.closest ? under.closest('[id]') : null;
-      el.style.display='';
-    }
+    const node = el.closest ? el.closest('[id]') : null;
     if (!node) return null;
     const id = (node.id||'').toLowerCase();
     if (id.startsWith('bg')) return null;
@@ -400,6 +393,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     });
 
     svgHost.addEventListener('dragover', (e)=>{
+      // overlay가 pointer-events:none 이므로 elementFromPoint가 svg를 정확히 집음
       const node = targetRoomFromPoint(e.clientX, e.clientY);
       if (!node) return;
       e.preventDefault();
@@ -417,7 +411,6 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
         const pid =e.dataTransfer.getData('text/pid');
         const prev=e.dataTransfer.getData('text/roomId')||null;
         if(!json||!pid) return;
-
         const p=JSON.parse(json);
         const st=ensureRoom(roomId);
 
@@ -459,7 +452,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
 
     // 방 클릭 → 설정 패널
     svg.addEventListener('click', (e)=>{
-      const node = targetRoomFromPoint(e.clientX, e.clientY) || e.target.closest('[id]');
+      const node = e.target.closest('[id]');
       if (!node) return;
       const id=node.id; if ((id||'').toLowerCase().startsWith('bg')) return;
       const st=ensureRoom(id);
@@ -485,7 +478,7 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     st.type=p_type.value;
     st.capacity=Math.max(1,parseInt(p_capacity.value||"1",10));
     st.gender=p_gender.value;
-    renderRoomLabel(id); positionRoomLabel(id); // 라벨 즉시 갱신
+    renderRoomLabel(id); positionRoomLabel(id);
     setStatus(`방 설정 적용: ${id}`);
   };
   document.getElementById('clearRoom').onclick = ()=>{
@@ -503,7 +496,8 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     let svg=doc.documentElement; if(svg.tagName.toLowerCase()!=='svg') svg=doc.querySelector('svg');
     if(!svg){ alert('유효한 SVG가 아닙니다'); setStatus('SVG 로드 실패'); return; }
     svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
-    svgHost.innerHTML=""; state.labels.clear(); svgHost.appendChild(svg); state.svgEl=svg;
+    svgLayer.innerHTML=""; overlay.innerHTML=""; state.labels.clear();
+    svgLayer.appendChild(svg); state.svgEl=svg;
 
     normalizeSvgAppearance(svg);
     attachRoomHandlers();
@@ -539,23 +533,29 @@ body.dragging{ user-select:none; cursor:grabbing; } /* (중요) 더 이상 point
     .filter(p=>Object.keys(TITLE_ORDER).includes(p.직위));
 
     state.people=ppl; state.assigned.clear(); state.roomState.forEach(st=>st.occupants=[]);
-    document.querySelectorAll('.occChip').forEach(el=>el.remove());
+    overlay.innerHTML=""; state.labels.clear();
 
     // 진료과 필터 옵션
     const depts=[...new Set(ppl.map(p=>p.부서).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
     deptFilter.innerHTML = '<option value="">전체 진료과</option>' + depts.map(d=>`<option value="${d}">${d}</option>`).join('');
 
     renderPeople();
+    // 기존 라벨 재도색
+    if(state.svgEl){ [...state.svgEl.querySelectorAll('[id]')].forEach(n=>{ const id=(n.id||'').toLowerCase(); if(!id||id.startsWith('bg')) return; renderRoomLabel(n.id); }); }
     setStatus(`교원 ${ppl.length}명 로드 완료`);
   }
 
   // 입력 이벤트
-  document.getElementById('svgInput').addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('SVG 선택 취소'); return; } loadSvgFromFile(f); });
-  document.getElementById('xlInput').addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('교원 엑셀 선택 취소'); return; } loadExcelFromFile(f); });
+  svgInput.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('SVG 선택 취소'); return; } loadSvgFromFile(f); });
+  xlInput .addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f){ setStatus('교원 엑셀 선택 취소'); return; } loadExcelFromFile(f); });
   resetBtn.addEventListener('click', ()=>{
     state.people=[]; state.assigned.clear(); state.roomState.clear(); state.labels.clear();
     state.deptAbbr.clear();
-    peopleBox.innerHTML=""; svgHost.innerHTML='<div class="placeholder">왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요</div>';
+    peopleBox.innerHTML="";
+    svgLayer.innerHTML=""; overlay.innerHTML="";
+    document.querySelector('.placeholder')?.remove();
+    const ph=document.createElement('div'); ph.className='placeholder'; ph.innerHTML='왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요';
+    svgHost.prepend(ph);
     setStatus('초기화 완료');
   });
   fixBtn.addEventListener('click', ()=>{
