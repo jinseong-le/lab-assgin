@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>연구실 배정 v1.26 (All-in-one)</title>
+<title>연구실 배정 v1.27 (All-in-one, Stable)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -32,7 +32,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   background-color:#fff;
 }
 #svgLayer{ position:relative; z-index:0; }
-#overlay{ position:absolute; left:0; top:0; width:100%; height:100%; z-index:10; pointer-events:none; }
+#svgLayer svg{ width:100%; height:auto; display:block; }
+#overlay{ position:absolute; left:0; top:0; width:100%; height:100%; z-index:10; pointer-events:auto; }
 .placeholder{ color:#999; display:flex; align-items:center; justify-content:center; height:480px; border:2px dashed #ccc; border-radius:12px; }
 
 /* 배경 그룹은 드롭 금지 */
@@ -53,7 +54,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 .badge{ display:inline-block; padding:2px 6px; border-radius:10px; background:#eef; margin-left:6px; font-size:12px; }
 .badge.room{ background:#e8f5e9; border:1px solid #c8e6c9; }
 
-/* ===== 칩/라벨은 모두 overlay에 위치 ===== */
+/* ===== 칩/라벨은 overlay 위에 위치 ===== */
 .occChip{
   position:absolute; font-size:11px; line-height:1.15;
   padding:4px 6px; border-radius:8px; background:#fafafa; border:1px solid #ccc;
@@ -96,11 +97,11 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     </div>
     <div class="group">
       <span class="hint">bg 제외 id 요소 드롭가능</span>
-      <span class="version">v1.26</span>
+      <span class="version">v1.27</span>
     </div>
   </header>
 
-  <div class="statusbar"><span id="status">v1.26 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
+  <div class="statusbar"><span id="status">v1.27 | 대기 중… SVG/약어/교원 엑셀을 업로드하세요</span></div>
 
   <main class="layout">
     <section class="canvasWrap">
@@ -159,14 +160,14 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 <script>
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (m) => statusEl.textContent = 'v1.26 | ' + m;
+  const setStatus = (m) => statusEl.textContent = 'v1.27 | ' + m;
 
   const state = {
     people:[], assigned:new Map(), roomState:new Map(), svgEl:null,
     search:"", deptFilter:"", genderFilter:"", labels:new Map(),
     deptAbbr:new Map()
   };
-  let processingDrop = false; // 드롭 1회 처리 가드
+  let processingDrop = false;
 
   const TITLE_ORDER = {"교수":1,"부교수":2,"조교수":3,"임상교수":4,"임상부교수":5,"임상조교수":6,"임상진료조교수":7,"임상강사":8};
   const toInt = s => { const n=parseInt(String(s||"").split(".")[0],10); return isNaN(n)?-999999:n; };
@@ -185,7 +186,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const deptFilter= document.getElementById('deptFilter');
   const genderFilter= document.getElementById('genderFilter');
 
-  /* ===== 전역 드래그 세이프가드 ===== */
+  /* ===== 전역 세이프가드: 드래그 상태 항상 복구 ===== */
   function endDragGlobally(){
     document.body.classList.remove('dragging');
     processingDrop = false;
@@ -196,6 +197,18 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     window.addEventListener(ev, endDragGlobally, true);
   });
   window.addEventListener('keydown', e=>{ if(e.key==='Escape') endDragGlobally(); }, true);
+
+  /* ===== 오버레이 크기 SVG에 맞춰 자동 갱신 ===== */
+  let ro;
+  function sizeOverlay(){
+    const svg = state.svgEl;
+    if(!svg) return;
+    // svg의 실제 렌더 영역 기준
+    const r = svg.getBoundingClientRect();
+    // 스크롤 콘텐츠 크기 기반으로 설정 (여유 100px)
+    overlay.style.width  = Math.max(svgLayer.scrollWidth,  Math.round(r.width  + 100)) + 'px';
+    overlay.style.height = Math.max(svgLayer.scrollHeight, Math.round(r.height + 100)) + 'px';
+  }
 
   /* ===== 약어 로더 ===== */
   async function loadAbbrExcel(file){
@@ -246,7 +259,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svg.removeAttribute('width'); svg.removeAttribute('height');
     svg.querySelectorAll('text').forEach(t=>{ if (!t.getAttribute('fill')) t.setAttribute('fill','#111827'); });
-    svg.style.position='relative'; svg.style.zIndex=0; /* 항상 아래 */
+    svg.style.position='relative'; svg.style.zIndex=0;
   }
 
   /* ===== 방 라벨 ===== */
@@ -301,7 +314,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
 
       chip.addEventListener('dragstart', e=>{
         document.body.classList.add('dragging');
-        // 칩이 드랍 타겟을 가리지 않게 overlay 전체를 투명 처리
+        // 드롭 타겟이 SVG 요소가 되도록 오버레이를 잠시 투명화
         overlay.style.pointerEvents='none';
         chip.style.pointerEvents='none';
         const ghost=document.createElement('canvas'); ghost.width=1; ghost.height=1; e.dataTransfer.setDragImage(ghost,0,0);
@@ -311,7 +324,6 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
         e.dataTransfer.setData('text/from','room');
         e.dataTransfer.setData('text/roomId', roomId);
         e.dataTransfer.setData('text/plain','drag');
-        // 안전장치
         setTimeout(()=>{ if(document.body.classList.contains('dragging')) endDragGlobally(); }, 4000);
       });
       chip.addEventListener('dragend', ()=>{ endDragGlobally(); });
@@ -321,6 +333,14 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   const renderRoom = (id)=> { layoutChips(id); renderRoomLabel(id); };
 
   /* ===== 우측 목록 렌더 ===== */
+  function expectedRoom(p){
+    if (p.부서==="마취통증의학과" || p.부서==="진단검사의학과") return "과내";
+    if (String(p.직계||"").startsWith("진료")) return "불가";
+    if (p.직위==="교수") return "1인실";
+    if (p.직위==="부교수" || p.직위==="조교수") return "2인실";
+    if (String(p.직위||"").startsWith("임상")) return "3~4인실";
+    return "3~6인실";
+  }
   function renderPeople(){
     const kw=(state.search||"").trim(); const re=kw?new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')):null;
     const list=state.people
@@ -393,7 +413,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     });
 
     svgHost.addEventListener('dragover', (e)=>{
-      // overlay가 pointer-events:none 이므로 elementFromPoint가 svg를 정확히 집음
+      // 드래그 중엔 overlay가 pointer-events:none 이므로 SVG가 정확히 타깃됨
       const node = targetRoomFromPoint(e.clientX, e.clientY);
       if (!node) return;
       e.preventDefault();
@@ -461,10 +481,12 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       panel.classList.add('show');
     });
 
-    // 라벨 위치 갱신
-    svgHost.addEventListener('scroll', renderAllRoomLabels);
-    window.addEventListener('resize', renderAllRoomLabels);
+    // 스크롤/리사이즈 시 칩/라벨 재배치
+    svgHost.addEventListener('scroll', ()=>{ renderAllChips(); renderAllRoomLabels(); });
+    window.addEventListener('resize', ()=>{ sizeOverlay(); renderAllChips(); renderAllRoomLabels(); });
   }
+
+  function renderAllChips(){ state.roomState.forEach((_, id)=> layoutChips(id)); }
 
   // 패널 버튼
   const panel=document.getElementById('roomPanel');
@@ -478,7 +500,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     st.type=p_type.value;
     st.capacity=Math.max(1,parseInt(p_capacity.value||"1",10));
     st.gender=p_gender.value;
-    renderRoomLabel(id); positionRoomLabel(id);
+    renderRoomLabel(id); renderAllRoomLabels();
     setStatus(`방 설정 적용: ${id}`);
   };
   document.getElementById('clearRoom').onclick = ()=>{
@@ -495,12 +517,23 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     const doc=new DOMParser().parseFromString(text,"image/svg+xml");
     let svg=doc.documentElement; if(svg.tagName.toLowerCase()!=='svg') svg=doc.querySelector('svg');
     if(!svg){ alert('유효한 SVG가 아닙니다'); setStatus('SVG 로드 실패'); return; }
-    svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
+
+    // 플레이스홀더 제거
+    svgHost.querySelector('.placeholder')?.remove();
+
+    // 기존 내용 초기화
     svgLayer.innerHTML=""; overlay.innerHTML=""; state.labels.clear();
+
+    svg.removeAttribute('width'); svg.removeAttribute('height'); if(!svg.getAttribute('viewBox')) svg.setAttribute('viewBox','0 0 1000 800');
     svgLayer.appendChild(svg); state.svgEl=svg;
 
     normalizeSvgAppearance(svg);
     attachRoomHandlers();
+
+    // 오버레이 크기 동기화 (ResizeObserver)
+    if (ro) ro.disconnect();
+    ro = new ResizeObserver(()=>{ sizeOverlay(); renderAllChips(); renderAllRoomLabels(); });
+    ro.observe(svg);
 
     // 모든 id에 라벨 생성
     [...svg.querySelectorAll('[id]')].forEach(n=>{
@@ -508,6 +541,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
       if (!id || id.startsWith('bg')) return;
       ensureRoom(n.id); renderRoomLabel(n.id);
     });
+
+    sizeOverlay();
     setStatus('SVG 로드 완료');
   }
 
@@ -522,6 +557,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     if(typeof XLSX==='undefined'){ alert('XLSX 로더가 차단됨'); setStatus('엑셀 로더 없음'); return; }
     const buf=await file.arrayBuffer();
     let wb; try{ wb=XLSX.read(new Uint8Array(buf),{type:'array'}); }catch(e){ alert('엑셀 파싱 실패'); setStatus('엑셀 로드 실패'); return; }
+    // 첫 시트 사용, 또는 "기준변경 반영"이 있으면 그 시트 사용
     const name=wb.SheetNames.includes("기준변경 반영")?"기준변경 반영":wb.SheetNames[0];
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{defval:""});
     const ppl=rows.map(r=>({
@@ -540,8 +576,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     deptFilter.innerHTML = '<option value="">전체 진료과</option>' + depts.map(d=>`<option value="${d}">${d}</option>`).join('');
 
     renderPeople();
-    // 기존 라벨 재도색
     if(state.svgEl){ [...state.svgEl.querySelectorAll('[id]')].forEach(n=>{ const id=(n.id||'').toLowerCase(); if(!id||id.startsWith('bg')) return; renderRoomLabel(n.id); }); }
+    sizeOverlay();
     setStatus(`교원 ${ppl.length}명 로드 완료`);
   }
 
@@ -553,7 +589,7 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
     state.deptAbbr.clear();
     peopleBox.innerHTML="";
     svgLayer.innerHTML=""; overlay.innerHTML="";
-    document.querySelector('.placeholder')?.remove();
+    svgHost.querySelector('.placeholder')?.remove();
     const ph=document.createElement('div'); ph.className='placeholder'; ph.innerHTML='왼쪽의 <b>SVG</b>, <b>약어 엑셀</b>(선택), <b>교원 엑셀</b>을 업로드하세요';
     svgHost.prepend(ph);
     setStatus('초기화 완료');
@@ -561,6 +597,8 @@ body{ font-family:system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple SD
   fixBtn.addEventListener('click', ()=>{
     if(!state.svgEl){ alert('먼저 SVG를 업로드하세요'); return; }
     normalizeSvgAppearance(state.svgEl);
+    sizeOverlay();
+    renderAllChips();
     renderAllRoomLabels();
     setStatus('도면 표시 복구/라벨 재배치');
   });
